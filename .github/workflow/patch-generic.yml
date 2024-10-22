@@ -1,0 +1,127 @@
+on:
+  workflow_call:
+    inputs:
+      githubappId:
+        required: true
+        type: string
+      sonarOrganization:
+        required: true
+        type: string
+      sonarProjectKey:
+        required: true
+        type: string
+      dockerImage:
+        required: true
+        type: string
+      dockerUsername:
+        required: true
+        type: string
+      releaseVersion:
+        required: true
+        type: string
+    secrets:
+      githubappPrivateKey:
+        required: true
+      sonar-token:
+        required: true
+      docker-token:
+        required: true
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/create-github-app-token@v1
+        id: app-token
+        name: Generate app token
+        with:
+          app-id: ${{ inputs.githubappId }}
+          private-key: ${{ secrets.githubappPrivateKey }}
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v1
+        with:
+          java-version: 17
+
+      - name: Checkout sources
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Parse release version
+        run: |
+          regex="^v([0-9]+)\.([0-9]+)$"
+          if [[ ${{ inputs.releaseVersion }} =~ $regex ]]
+          then
+            echo Release version matches vX.X format
+          else 
+            echo ERROR: release version should match the format vX.X
+            exit 1
+          fi
+
+      - name: Check if release already exists
+        run: |
+          if git ls-remote --quiet --exit-code origin refs/heads/release-${{ inputs.releaseVersion }} >/dev/null 2>&1
+          then
+            echo "Release ${{ inputs.releaseVersion }} already exists, patch will be perfomed"
+          else
+            echo "Release ${{ inputs.releaseVersion }} doesn't exist, patch cannot be performed"
+            exit 1
+          fi
+
+      - name: Checkout on existing release branch
+        run: |
+          git checkout release-${{ inputs.releaseVersion }}
+
+      - name: Extract tag versions
+        run: |
+          lastTag=$(git describe --tags --abbrev=0)
+          regex="^v([0-9]+)\.([0-9]+)\.([0-9]+)$"
+          if [[ $lastTag =~ $regex ]]
+          then
+            major=${BASH_REMATCH[1]}
+            minor=${BASH_REMATCH[2]}
+            patch=${BASH_REMATCH[3]}
+            ((++patch))
+            echo "GITHUB_MAJOR_VERSION=$major" >> $GITHUB_ENV
+            echo "GITHUB_MINOR_VERSION=$minor" >> $GITHUB_ENV
+            echo "GITHUB_PATCH_VERSION=$patch" >> $GITHUB_ENV
+            echo "GITHUB_SHORT_VERSION=$major.$minor.$patch" >> $GITHUB_ENV
+          else
+            echo "ERROR: last tag $lastTag does not match required format vX.X.X"
+            exit 1
+          fi
+
+      - name: Change Maven version to release version
+        run: mvn --batch-mode versions:set -DgenerateBackupPoms=false -DnewVersion=${{ env.GITHUB_SHORT_VERSION }}
+
+      - name: Build with Maven
+        run: mvn --batch-mode -Pjacoco verify
+
+      - name: Run SonarCloud analysis
+        run: >
+          mvn --batch-mode -DskipTests sonar:sonar
+          -Dsonar.host.url=https://sonarcloud.io
+          -Dsonar.organization=${{ inputs.sonarOrganization }}
+          -Dsonar.projectKey=${{ inputs.sonarProjectKey }}
+        env:
+          SONAR_TOKEN: ${{ secrets.sonar-token }}
+
+      - name: Build Docker image
+        run: >
+          mvn --batch-mode deploy -DskipTests -Dmaven.install.skip -Dmaven.deploy.skip -Dpowsybl.docker.deploy
+          -Djib.httpTimeout=60000
+          -Djib.to.image=${{ inputs.dockerImage }}:${{ env.GITHUB_SHORT_VERSION }}
+          -Djib.to.auth.username=${{ inputs.dockerUsername }}
+          -Djib.to.auth.password=${{ secrets.docker-token }}
+
+      - name: Commit and tag release version
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -m "Patched release v${{ env.GITHUB_SHORT_VERSION }}"
+          git tag v${{ env.GITHUB_SHORT_VERSION }}
+          git push origin release-v${{ env.GITHUB_MAJOR_VERSION }}.${{ env.GITHUB_MINOR_VERSION }}
+          git push origin v${{ env.GITHUB_SHORT_VERSION }}

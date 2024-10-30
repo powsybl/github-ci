@@ -94,14 +94,6 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.sonar-token }}
 
-      - name: Build Docker image
-        run: >
-          mvn --batch-mode deploy -DskipTests -Dmaven.install.skip -Dmaven.deploy.skip -Dpowsybl.docker.deploy
-          -Djib.httpTimeout=60000
-          -Djib.to.image=${{ inputs.dockerImage }}:${{ env.GITHUB_SHORT_VERSION }}
-          -Djib.to.auth.username=${{ inputs.dockerUsername }}
-          -Djib.to.auth.password=${{ secrets.docker-token }}
-
       - name: Commit and tag release version
         run: |
           git config --global user.name "github-actions[bot]"
@@ -111,6 +103,14 @@ jobs:
           git tag v${{ env.GITHUB_SHORT_VERSION }}
           git push origin release-v${{ env.GITHUB_MAJOR_VERSION }}.${{ env.GITHUB_MINOR_VERSION }}
           git push origin v${{ env.GITHUB_SHORT_VERSION }}
+
+      - name: Build Docker image
+        run: >
+          mvn --batch-mode deploy -DskipTests -Dmaven.install.skip -Dmaven.deploy.skip -Dpowsybl.docker.deploy
+          -Djib.httpTimeout=60000
+          -Djib.to.image=${{ inputs.dockerImage }}:${{ env.GITHUB_SHORT_VERSION }}
+          -Djib.to.auth.username=${{ inputs.dockerUsername }}
+          -Djib.to.auth.password=${{ secrets.docker-token }}
 
       - name: Checkout main
         run: |

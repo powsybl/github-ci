@@ -19,15 +19,6 @@ on:
       releaseVersion:
         required: true
         type: string
-      commitShas:
-        required: true
-        type: string
-        description: "Comma-separated list of commit SHAs to include in the patch"
-      forcePatch:
-        required: false
-        type: boolean
-        default: false
-        description: "If true, will override the last patch"
     secrets:
       githubappPrivateKey:
         required: true
@@ -82,45 +73,6 @@ jobs:
       - name: Checkout on existing release branch
         run: |
           git checkout release-${{ inputs.releaseVersion }}
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-      - name: Get current and previous tags
-        id: tags
-        run: |
-          current_tag=$(git describe --tags --abbrev=0)
-          previous_tag=$(git describe --tags --abbrev=0 "$current_tag"^)
-          echo "current_tag=$current_tag" >> $GITHUB_OUTPUT
-          echo "previous_tag=$previous_tag" >> $GITHUB_OUTPUT
-
-      - name: Handle force patch
-        if: inputs.forcePatch
-        run: |
-          echo "Force patch enabled - resetting to previous tag"
-          
-          # Delete current tag locally and remotely
-          git tag -d ${{ steps.tags.outputs.current_tag }}
-          git push origin --delete ${{ steps.tags.outputs.current_tag }}
-          
-          # Reset to previous tag
-          git reset --hard ${{ steps.tags.outputs.previous_tag }}
-
-      - name: Cherry-pick commits
-        run: |
-          # Convert comma-separated SHAs to array
-          IFS=',' read -ra COMMITS <<< "${{ inputs.commitShas }}"
-          
-          # Cherry-pick each commit
-          for sha in "${COMMITS[@]}"; do
-            # Trim any whitespace
-            sha=$(echo $sha | xargs)
-            echo "Cherry-picking commit: $sha"
-            if ! git cherry-pick -x "$sha"; then
-              echo "Failed to cherry-pick commit $sha"
-              git cherry-pick --abort
-              exit 1
-            fi
-          done
 
       - name: Extract tag versions
         run: |
@@ -175,5 +127,4 @@ jobs:
       - name: Push release branch and tag
         run: |
           git push origin release-v${{ env.GITHUB_MAJOR_VERSION }}.${{ env.GITHUB_MINOR_VERSION }}
-          git push origin v${{ env.GITHUB_SHORT_VERSION }}
-          
+          git push origin v${{ env.GITHUB_SHORT_VERSION }}          

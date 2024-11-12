@@ -22,10 +22,6 @@ on:
       gitReference:
         required: true
         type: string
-      force-release:
-        required: false
-        type: boolean
-        default: false
     secrets:
       githubappPrivateKey:
         required: true
@@ -69,32 +65,15 @@ jobs:
             exit 1
           fi
 
-      - name: Check and handle existing release
+      - name: Check if release already exists
         run: |
-          BRANCH_EXISTS=$(git ls-remote --quiet --exit-code origin refs/heads/release-${{ inputs.releaseVersion }} >/dev/null 2>&1; echo $?)
-          TAG_EXISTS=$(git ls-remote --quiet --exit-code origin refs/tags/v${{ env.GITHUB_SHORT_VERSION }} >/dev/null 2>&1; echo $?)
-          
-          if [ $BRANCH_EXISTS -eq 0 ] || [ $TAG_EXISTS -eq 0 ]; then
-            if [[ "${{ inputs.force-release }}" != "true" ]]; then
-              echo "ERROR: Release ${{ inputs.releaseVersion }} already exists. Use force-release: true to override"
-              exit 1
-            else
-              echo "Force release enabled - cleaning up existing release artifacts"
-          
-              # Delete remote branch if it exists
-              if [ $BRANCH_EXISTS -eq 0 ]; then
-                git push origin --delete release-${{ inputs.releaseVersion }}
-                echo "Deleted existing release branch"
-              fi
-          
-              # Delete remote tag if it exists
-              if [ $TAG_EXISTS -eq 0 ]; then
-                git push origin --delete v${{ env.GITHUB_SHORT_VERSION }}
-                echo "Deleted existing release tag"
-              fi
-            fi
+          if git ls-remote --quiet --exit-code origin refs/heads/release-${{ inputs.releaseVersion }} >/dev/null 2>&1
+          then
+            echo "ERROR: Release ${{ inputs.releaseVersion }} already exists"
+            exit 1
+          else
+            echo "Release ${{ inputs.releaseVersion }} doesn't exist, it will be performed"
           fi
-          echo "Proceeding with release creation"
 
       - name: Checkout with new branch
         run: |

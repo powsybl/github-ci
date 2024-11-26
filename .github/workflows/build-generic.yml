@@ -14,7 +14,8 @@ on:
         required: true
         type: string
       eventOrganizations:
-        required: true
+        required: false
+        default: ''
         type: string
       eventType:
         required: true

@@ -13,6 +13,9 @@ on:
       dockerUsername:
         required: true
         type: string
+      eventOrganizations:
+        required: true
+        type: string
       eventType:
         required: true
         type: string
@@ -63,4 +66,5 @@ jobs:
         uses: gridsuite/broadcast-event@main
         with:
           token: ${{ secrets.repo-token }}
+          organizations: ${{ inputs.eventOrganizations }}
           event-type: ${{ inputs.eventType }}

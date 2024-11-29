@@ -1,0 +1,129 @@
+name: Patch
+
+on:
+  workflow_dispatch:
+    inputs:
+      releaseVersion:
+        description: 'Release version (format: vX.X)'
+        required: true
+        type: string
+      dockerImageName:
+        description: 'Name of the Docker image (e.g., organization/app-name)'
+        required: true
+        type: string
+      appId:
+        description: 'GitHub App ID for authentication'
+        required: true
+        type: string
+    secrets:
+      GITHUB_APP_PRIVATE_KEY:
+        required: true
+      DOCKERHUB_TOKEN:
+        required: true
+      SONAR_TOKEN:
+        required: true
+
+env:
+  NODE_OPTIONS: '--max_old_space_size=4096'
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ inputs.appId }}
+          private-key: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18.x'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Parse release version
+        run: |
+          regex="^v([0-9]+)\.([0-9]+)$"
+          if ! [[ ${{ inputs.releaseVersion }} =~ $regex ]]; then
+            echo "ERROR: Release version must match the format vX.X (e.g., v2.8)"
+            echo "Received: ${{ inputs.releaseVersion }}"
+            exit 1
+          fi
+          
+          MAJOR="${BASH_REMATCH[1]}"
+          MINOR="${BASH_REMATCH[2]}"
+          
+          echo "RELEASE_BRANCH=release-v${MAJOR}.${MINOR}" >> $GITHUB_ENV
+
+      - name: Verify Release Branch Exists
+        run: |
+          if ! git ls-remote --quiet --exit-code origin refs/heads/${{ env.RELEASE_BRANCH }} >/dev/null 2>&1; then
+            echo "ERROR: Release branch ${{ env.RELEASE_BRANCH }} does not exist"
+            echo "Please ensure you have created the release branch before running a patch"
+            exit 1
+          fi
+          
+          echo "Release branch ${{ env.RELEASE_BRANCH }} found - continuing with patch"
+
+      - name: Checkout on existing release branch
+        run: |
+          git checkout -b ${{ env.RELEASE_BRANCH }}
+
+      - name: Extract tag versions
+        run: |
+          lastTag=$(git describe --tags --abbrev=0)
+          regex="^v([0-9]+)\.([0-9]+)\.([0-9]+)$"
+          if [[ $lastTag =~ $regex ]]
+          then
+            major=${BASH_REMATCH[1]}
+            minor=${BASH_REMATCH[2]}
+            patch=${BASH_REMATCH[3]}
+            ((++patch))
+            echo "RELEASE_VERSION=$major.$minor.$patch" >> $GITHUB_ENV
+          else
+            echo "ERROR: last tag $lastTag does not match required format vX.X.X"
+            exit 1
+          fi
+
+      - name: Create New Version
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+          npm version ${{ env.RELEASE_VERSION }}
+          
+          git push origin "v${{ env.RELEASE_VERSION }}"
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Quality Checks
+        run: |
+          npm run lint
+          npm run test:coverage
+          npm run licenses-check
+
+      - name: Build Application
+        run: npm run build
+
+      - name: SonarCloud Analysis
+        uses: SonarSource/sonarcloud-github-action@v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+      - name: Build and publish Docker image
+        uses: elgohr/Publish-Docker-Github-Action@33a481be3e179353cb7793a92b57cf9a6c985860 # v4
+        with:
+          name: ${{ inputs.dockerImageName }}
+          username: gridsuiteci
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          tags: ${{ env.RELEASE_VERSION }}

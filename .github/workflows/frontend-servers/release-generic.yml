@@ -1,0 +1,132 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      releaseVersion:
+        description: 'Release version (format: vX.X)'
+        required: true
+        type: string
+      commitSha:
+        description: 'SHA of the commit to release from'
+        required: true
+        type: string
+      dockerImageName:
+        description: 'Name of the Docker image (e.g., organization/app-name)'
+        required: true
+        type: string
+      appId:
+        description: 'GitHub App ID for authentication'
+        required: true
+        type: string
+    secrets:
+      GITHUB_APP_PRIVATE_KEY:
+        required: true
+      DOCKERHUB_TOKEN:
+        required: true
+      SONAR_TOKEN:
+        required: true
+
+env:
+  NODE_OPTIONS: '--max_old_space_size=4096'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ inputs.appId }}
+          private-key: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18.x'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Extract Version Numbers
+        run: |
+          if ! [[ ${{ inputs.releaseVersion }} =~ ^v([0-9]+)\.([0-9]+)$ ]]; then
+            echo "Error: Invalid version format. Must be vX.X (e.g., v1.2)"
+            exit 1
+          fi
+          
+          MAJOR="${BASH_REMATCH[1]}"
+          MINOR="${BASH_REMATCH[2]}"
+          
+          echo "RELEASE_MAJOR_VERSION=${MAJOR}" >> $GITHUB_ENV
+          echo "RELEASE_MINOR_VERSION=${MINOR}" >> $GITHUB_ENV
+          echo "RELEASE_VERSION=${MAJOR}.${MINOR}.0" >> $GITHUB_ENV
+          echo "RELEASE_BRANCH=release-v${MAJOR}.${MINOR}" >> $GITHUB_ENV
+
+      - name: Create Release Branch
+        run: |
+          git checkout -b ${{ env.RELEASE_BRANCH }} ${{ inputs.commitSha }}
+          
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Update Version and Tag
+        run: |
+          # Configure git for commits
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+          # Use npm version to update version, create commit and tag
+          npm version ${{ env.RELEASE_VERSION }}
+          
+          # Push both the tag and the branch
+          git push origin v${{ env.RELEASE_VERSION }}
+          git push origin ${{ env.RELEASE_BRANCH }}
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Quality Checks
+        run: |
+          npm run lint
+          npm run test:coverage
+          npm run licenses-check
+
+      - name: Build Application
+        run: npm run build
+
+      - name: SonarCloud Analysis
+        uses: SonarSource/sonarcloud-github-action@v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+      - name: Build and publish Docker image
+        uses: elgohr/Publish-Docker-Github-Action@33a481be3e179353cb7793a92b57cf9a6c985860 # v4
+        with:
+          name: ${{ inputs.dockerImageName }}
+          username: gridsuiteci
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          tags: ${{ env.RELEASE_VERSION }}
+
+      - name: Update Development Version
+        run: |
+          git checkout main
+          git pull
+          
+          # Calculate next development version
+          NEW_MINOR=$((RELEASE_MINOR_VERSION + 1))
+          DEV_VERSION="${RELEASE_MAJOR_VERSION}.${NEW_MINOR}.0"
+          
+          # Update package.json with development version
+          npm version ${DEV_VERSION} --no-git-tag-version
+          
+          # Commit and push changes
+          git add .
+          git commit -m "Bump version to v${DEV_VERSION}"
+          git push origin main

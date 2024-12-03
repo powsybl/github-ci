@@ -3,7 +3,7 @@ name: Patch
 on:
   workflow_call:
     inputs:
-      appId:
+      githubappId:
         required: true
         type: string
       branchRef:
@@ -11,7 +11,7 @@ on:
         required: true
         type: string
     secrets:
-      APP_PRIVATE_KEY:
+      githubappPrivateKey:
         required: true
 
 jobs:
@@ -30,7 +30,7 @@ jobs:
         name: Generate app token
         with:
           app-id: ${{ inputs.githubappId }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          private-key: ${{ secrets.githubappPrivateKey }}
 
       - name: Checkout sources
         uses: actions/checkout@v4

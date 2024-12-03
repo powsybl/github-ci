@@ -11,20 +11,23 @@ on:
         description: 'SHA of the commit to release from'
         required: true
         type: string
-      dockerImageName:
+      dockerImage:
         description: 'Name of the Docker image (e.g., organization/app-name)'
         required: true
         type: string
-      appId:
+      dockerUsername:
+        required: true
+        type: string
+      githubappId:
         description: 'GitHub App ID for authentication'
         required: true
         type: string
     secrets:
-      GITHUB_APP_PRIVATE_KEY:
+      githubappPrivateKey:
         required: true
-      DOCKERHUB_TOKEN:
+      docker-token:
         required: true
-      SONAR_TOKEN:
+      sonar-token:
         required: true
 
 env:
@@ -38,8 +41,8 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@v1
         with:
-          app-id: ${{ inputs.appId }}
-          private-key: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
+          app-id: ${{ inputs.githubappId }}
+          private-key: ${{ secrets.githubappPrivateKey }}
 
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -71,9 +74,6 @@ jobs:
       - name: Create Release Branch
         run: |
           git checkout -b ${{ env.RELEASE_BRANCH }} ${{ inputs.commitSha }}
-          
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Update Version and Tag
         run: |
@@ -103,25 +103,40 @@ jobs:
       - name: SonarCloud Analysis
         uses: SonarSource/sonarcloud-github-action@v3.0.0
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          SONAR_TOKEN: ${{ secrets.sonar-token }}
 
       - name: Build and publish Docker image
         uses: elgohr/Publish-Docker-Github-Action@33a481be3e179353cb7793a92b57cf9a6c985860 # v4
         with:
-          name: ${{ inputs.dockerImageName }}
-          username: gridsuiteci
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          name: ${{ inputs.dockerImage }}
+          username: ${{ inputs.dockerUsername }}
+          password: ${{ secrets.docker-token }}
           tags: ${{ env.RELEASE_VERSION }}
 
-      - name: Update Development Version
+      - name: Checkout main
         run: |
           git checkout main
           git pull
-          
+
+      - name: Get current package version
+        run: |
+          echo "CURRENT_NPM_VERSION=$(node -p "require('./package.json').version")" >> $GITHUB_ENV
+
+      - name: Extract current version
+        run: |
+          regex="(.*)-SNAPSHOT"
+          if [[ ${{ env.CURRENT_NPM_VERSION }} =~ $regex ]]; 
+          then
+            echo "CURRENT_RELEASE_VERSION=${BASH_REMATCH[1]}" >> $GITHUB_ENV
+          fi
+
+      - name: Update SNAPSHOT version on main
+        if: env.CURRENT_RELEASE_VERSION == env.RELEASE_VERSION
+        run: |
           # Calculate next development version
           NEW_MINOR=$((RELEASE_MINOR_VERSION + 1))
-          DEV_VERSION="${RELEASE_MAJOR_VERSION}.${NEW_MINOR}.0"
+          DEV_VERSION="${RELEASE_MAJOR_VERSION}.${NEW_MINOR}.0-SNAPSHOT"
           
           # Update package.json with development version
           npm version ${DEV_VERSION} --no-git-tag-version

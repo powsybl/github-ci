@@ -1,5 +1,3 @@
-name: Patch
-
 on:
   workflow_dispatch:
     inputs:
@@ -55,30 +53,27 @@ jobs:
       - name: Parse release version
         run: |
           regex="^v([0-9]+)\.([0-9]+)$"
-          if ! [[ ${{ inputs.releaseVersion }} =~ $regex ]]; then
-            echo "ERROR: Release version must match the format vX.X (e.g., v2.8)"
-            echo "Received: ${{ inputs.releaseVersion }}"
+          if [[ ${{ inputs.releaseVersion }} =~ $regex ]]
+          then
+            echo Release version matches vX.X format
+          else 
+            echo ERROR: release version should match the format vX.X
             exit 1
           fi
-          
-          MAJOR="${BASH_REMATCH[1]}"
-          MINOR="${BASH_REMATCH[2]}"
-          
-          echo "RELEASE_BRANCH=release-v${MAJOR}.${MINOR}" >> $GITHUB_ENV
 
-      - name: Verify Release Branch Exists
+      - name: Check if release already exists
         run: |
-          if ! git ls-remote --quiet --exit-code origin refs/heads/${{ env.RELEASE_BRANCH }} >/dev/null 2>&1; then
-            echo "ERROR: Release branch ${{ env.RELEASE_BRANCH }} does not exist"
-            echo "Please ensure you have created the release branch before running a patch"
+          if git ls-remote --quiet --exit-code origin refs/heads/release-${{ inputs.releaseVersion }} >/dev/null 2>&1
+          then
+            echo "Release ${{ inputs.releaseVersion }} already exists, patch will be perfomed"
+          else
+            echo "Release ${{ inputs.releaseVersion }} doesn't exist, patch cannot be performed"
             exit 1
           fi
-          
-          echo "Release branch ${{ env.RELEASE_BRANCH }} found - continuing with patch"
 
       - name: Checkout on existing release branch
         run: |
-          git checkout -b ${{ env.RELEASE_BRANCH }}
+          git checkout release-${{ inputs.releaseVersion }}
 
       - name: Extract tag versions
         run: |
@@ -102,8 +97,6 @@ jobs:
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           
           npm version ${{ env.RELEASE_VERSION }}
-          
-          git push origin "v${{ env.RELEASE_VERSION }}"
 
       - name: Install Dependencies
         run: npm ci
@@ -130,3 +123,7 @@ jobs:
           username: ${{ inputs.dockerUsername }}
           password: ${{ secrets.docker-token }}
           tags: ${{ env.RELEASE_VERSION }}
+
+      - name: Push tag
+        run: |
+          git push origin v${{ env.RELEASE_VERSION }}

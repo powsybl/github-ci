@@ -69,6 +69,7 @@ jobs:
         run: |
           git tag v${{ steps.versions.outputs.PATCH_VERSION }}
           git push origin v${{ steps.versions.outputs.PATCH_VERSION }}
+          git push origin ${{ inputs.branchRef }}
 
       - name: Create GitHub Release
         env:

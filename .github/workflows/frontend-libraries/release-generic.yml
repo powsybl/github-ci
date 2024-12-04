@@ -1,0 +1,84 @@
+on:
+  workflow_call:
+    inputs:
+      versionType:
+        description: 'Type of version increment (major, minor, patch)'
+        required: true
+        type: string
+      nodeAuthToken:
+        description: 'NPM automation access token'
+        required: true
+        type: string
+      githubappId:
+        description: 'GitHub App ID for authentication'
+        required: true
+        type: string
+    secrets:
+      githubappPrivateKey:
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate Version Type
+        run: |
+          if [[ ! "${{ inputs.versionType }}" =~ ^(major|minor|patch)$ ]]; then
+            echo "Error: versionType must be one of: major, minor, patch"
+            echo "Received: ${{ inputs.versionType }}"
+            exit 1
+          fi
+
+      - name: Mask Node Auth Token
+        run: |
+          NODE_AUTH_TOKEN=$(jq -r '.inputs.nodeAuthToken' $GITHUB_EVENT_PATH)
+          echo ::add-mask::$NODE_AUTH_TOKEN
+          echo "NODE_AUTH_TOKEN=$NODE_AUTH_TOKEN" >> $GITHUB_ENV
+
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ inputs.githubappId }}
+          private-key: ${{ secrets.githubappPrivateKey }}
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18.x'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Version and Release
+        run: |
+          npm version ${{ inputs.versionType }}
+          
+          git push origin main
+          git push origin $(git tag --points-at HEAD)
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Publish to NPM
+        run: npm publish --access=public
+        env:
+          NODE_AUTH_TOKEN: ${{ env.NODE_AUTH_TOKEN }}
+
+      - name: Create GitHub Release
+        run: |
+          gh release create $(git tag --points-at HEAD) --generate-notes
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}

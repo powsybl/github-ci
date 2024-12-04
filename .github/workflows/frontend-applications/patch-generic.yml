@@ -1,0 +1,129 @@
+on:
+  workflow_dispatch:
+    inputs:
+      releaseVersion:
+        description: 'Release version (format: vX.X)'
+        required: true
+        type: string
+      dockerImage:
+        description: 'Name of the Docker image (e.g., organization/app-name)'
+        required: true
+        type: string
+      dockerUsername:
+        required: true
+        type: string
+      githubappId:
+        description: 'GitHub App ID for authentication'
+        required: true
+        type: string
+    secrets:
+      githubappPrivateKey:
+        required: true
+      docker-token:
+        required: true
+      sonar-token:
+        required: true
+
+env:
+  NODE_OPTIONS: '--max_old_space_size=4096'
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ inputs.githubappId }}
+          private-key: ${{ secrets.githubappPrivateKey }}
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18.x'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Parse release version
+        run: |
+          regex="^v([0-9]+)\.([0-9]+)$"
+          if [[ ${{ inputs.releaseVersion }} =~ $regex ]]
+          then
+            echo Release version matches vX.X format
+          else 
+            echo ERROR: release version should match the format vX.X
+            exit 1
+          fi
+
+      - name: Check if release already exists
+        run: |
+          if git ls-remote --quiet --exit-code origin refs/heads/release-${{ inputs.releaseVersion }} >/dev/null 2>&1
+          then
+            echo "Release ${{ inputs.releaseVersion }} already exists, patch will be perfomed"
+          else
+            echo "Release ${{ inputs.releaseVersion }} doesn't exist, patch cannot be performed"
+            exit 1
+          fi
+
+      - name: Checkout on existing release branch
+        run: |
+          git checkout release-${{ inputs.releaseVersion }}
+
+      - name: Extract tag versions
+        run: |
+          lastTag=$(git describe --tags --abbrev=0)
+          regex="^v([0-9]+)\.([0-9]+)\.([0-9]+)$"
+          if [[ $lastTag =~ $regex ]]
+          then
+            major=${BASH_REMATCH[1]}
+            minor=${BASH_REMATCH[2]}
+            patch=${BASH_REMATCH[3]}
+            ((++patch))
+            echo "RELEASE_VERSION=$major.$minor.$patch" >> $GITHUB_ENV
+          else
+            echo "ERROR: last tag $lastTag does not match required format vX.X.X"
+            exit 1
+          fi
+
+      - name: Create New Version
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+          npm version ${{ env.RELEASE_VERSION }}
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Quality Checks
+        run: |
+          npm run lint
+          npm run test:coverage
+          npm run licenses-check
+
+      - name: Build Application
+        run: npm run build
+
+      - name: SonarCloud Analysis
+        uses: SonarSource/sonarcloud-github-action@v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          SONAR_TOKEN: ${{ secrets.sonar-token }}
+
+      - name: Build and publish Docker image
+        uses: elgohr/Publish-Docker-Github-Action@33a481be3e179353cb7793a92b57cf9a6c985860 # v4
+        with:
+          name: ${{ inputs.dockerImage }}
+          username: ${{ inputs.dockerUsername }}
+          password: ${{ secrets.docker-token }}
+          tags: ${{ env.RELEASE_VERSION }}
+
+      - name: Push tag
+        run: |
+          git push origin v${{ env.RELEASE_VERSION }}

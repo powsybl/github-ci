@@ -1,0 +1,80 @@
+on:
+  workflow_call:
+    inputs:
+      githubappId:
+        required: true
+        type: string
+      branchRef:
+        description: 'Patch branch (format: release-vX.Y.Z)'
+        required: true
+        type: string
+    secrets:
+      githubappPrivateKey:
+        required: true
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate branch name format
+        run: |
+          if [[ ! "${{ inputs.branchRef }}" =~ ^release-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid branch name format. Expected format: release-vX.Y.Z"
+            exit 1
+          fi
+
+      - uses: actions/create-github-app-token@v1
+        id: app-token
+        name: Generate app token
+        with:
+          app-id: ${{ inputs.githubappId }}
+          private-key: ${{ secrets.githubappPrivateKey }}
+
+      - name: Checkout sources
+        uses: actions/checkout@v4
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          ref: ${{ inputs.branchRef }}
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v1
+        with:
+          java-version: 17
+
+      - name: Extract version and validate tag
+        id: versions
+        run: |
+          PATCH_VERSION=$(echo "${{ inputs.branchRef }}" | sed 's/release-v\(.*\)/\1/')
+          
+          if git rev-parse "v${PATCH_VERSION}" >/dev/null 2>&1; then
+            echo "Tag v${PATCH_VERSION} already exists"
+            exit 1
+          fi
+          
+          echo "PATCH_VERSION=${PATCH_VERSION}" >> $GITHUB_OUTPUT
+          echo "Patch version will be: ${PATCH_VERSION}"
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Set patch version
+        run: |
+          mvn versions:set -DnewVersion=${{ steps.versions.outputs.PATCH_VERSION }} -DgenerateBackupPoms=false
+          git commit -am "Patched version ${{ steps.versions.outputs.PATCH_VERSION }}"
+
+      - name: Create and push tag
+        run: |
+          git tag v${{ steps.versions.outputs.PATCH_VERSION }}
+          git push origin v${{ steps.versions.outputs.PATCH_VERSION }}
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          gh release create v${{ steps.versions.outputs.PATCH_VERSION }} \
+            --title "v${{ steps.versions.outputs.PATCH_VERSION }}" \
+            --generate-notes \
+            --notes "Patch release based on ${{ inputs.branchRef }}"

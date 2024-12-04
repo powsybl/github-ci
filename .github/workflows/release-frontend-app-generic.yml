@@ -1,5 +1,5 @@
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
       releaseVersion:
         description: 'Release version (format: vX.X)'

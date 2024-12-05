@@ -124,6 +124,7 @@ jobs:
           password: ${{ secrets.docker-token }}
           tags: ${{ env.RELEASE_VERSION }}
 
-      - name: Push tag
+      - name: Push tag and release branch
         run: |
           git push origin v${{ env.RELEASE_VERSION }}
+          git push origin release-${{ inputs.releaseVersion }}

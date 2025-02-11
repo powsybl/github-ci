@@ -1,0 +1,54 @@
+on:
+  workflow_call:
+    inputs:
+      sonarOrganization:
+        required: true
+        type: string
+      sonarProjectKey:
+        required: true
+        type: string
+      eventOrganizations:
+        required: false
+        default: ''
+        type: string
+      eventType:
+        required: true
+        type: string
+    secrets:
+      sonar-token:
+        required: true
+      repo-token:
+        required: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up JDK 21
+        uses: actions/setup-java@v1
+        with:
+          java-version: 21
+
+      - name: Checkout sources
+        uses: actions/checkout@v1
+
+      - name: Build with Maven
+        run: mvn --batch-mode -Pjacoco verify
+
+      - name: Run SonarCloud analysis
+        run: >
+          mvn --batch-mode -DskipTests sonar:sonar
+          -Dsonar.host.url=https://sonarcloud.io
+          -Dsonar.organization=${{ inputs.sonarOrganization }}
+          -Dsonar.projectKey=${{ inputs.sonarProjectKey }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.sonar-token }}
+
+      - name: Broadcast update event
+        if: github.ref == 'refs/heads/main'
+        uses: gridsuite/broadcast-event@main
+        with:
+          token: ${{ secrets.repo-token }}
+          organizations: ${{ inputs.eventOrganizations }}
+          event-type: ${{ inputs.eventType }}

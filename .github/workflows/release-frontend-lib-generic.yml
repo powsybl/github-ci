@@ -73,7 +73,7 @@ jobs:
         run: npm ci
 
       - name: Publish to NPM
-        run: npm publish --access=public
+        run: npm publish --access=public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ env.NODE_AUTH_TOKEN }}
 

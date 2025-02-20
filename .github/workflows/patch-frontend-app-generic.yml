@@ -47,8 +47,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18.x'
-          registry-url: 'https://registry.npmjs.org'
+          node-version: 22
+          registry-url: https://registry.npmjs.org
 
       - name: Parse release version
         run: |
@@ -72,8 +72,7 @@ jobs:
           fi
 
       - name: Checkout on existing release branch
-        run: |
-          git checkout release-${{ inputs.releaseVersion }}
+        run: git checkout release-${{ inputs.releaseVersion }}
 
       - name: Extract tag versions
         run: |

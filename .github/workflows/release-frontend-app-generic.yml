@@ -51,8 +51,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18.x'
-          registry-url: 'https://registry.npmjs.org'
+          node-version: 22
+          registry-url: https://registry.npmjs.org
 
       - name: Extract Version Numbers
         run: |
@@ -70,8 +70,7 @@ jobs:
           echo "RELEASE_BRANCH=release-v${MAJOR}.${MINOR}" >> $GITHUB_ENV
 
       - name: Create Release Branch
-        run: |
-          git checkout -b ${{ env.RELEASE_BRANCH }} ${{ inputs.commitSha }}
+        run: git checkout -b ${{ env.RELEASE_BRANCH }} ${{ inputs.commitSha }}
 
       - name: Update Version and Tag
         run: |
@@ -119,8 +118,7 @@ jobs:
           git pull
 
       - name: Get current package version
-        run: |
-          echo "CURRENT_NPM_VERSION=$(node -p "require('./package.json').version")" >> $GITHUB_ENV
+        run: echo "CURRENT_NPM_VERSION=$(node -p "require('./package.json').version")" >> $GITHUB_ENV
 
       - name: Extract current version
         run: |

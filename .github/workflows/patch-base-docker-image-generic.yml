@@ -94,7 +94,7 @@ jobs:
           name: ${{ inputs.dockerImage }}
           username: ${{ inputs.dockerUsername }}
           password: ${{ secrets.docker-token }}
-          tags: :${{ env.GITHUB_SHORT_VERSION }}
+          tags: ${{ env.GITHUB_SHORT_VERSION }}
           no_push: true #TODO remove
 
       - name: Push release branch and tag

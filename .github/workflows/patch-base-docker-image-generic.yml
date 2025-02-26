@@ -97,5 +97,4 @@ jobs:
 
       - name: Push release branch and tag
         run: |
-          git push origin release-v${{ env.GITHUB_MAJOR_VERSION }}.${{ env.GITHUB_MINOR_VERSION }}
           git push origin v${{ env.GITHUB_SHORT_VERSION }}          

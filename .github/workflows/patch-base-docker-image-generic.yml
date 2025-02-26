@@ -16,8 +16,6 @@ on:
     secrets:
       githubappPrivateKey:
         required: true
-      sonar-token:
-        required: true
       docker-token:
         required: true
 

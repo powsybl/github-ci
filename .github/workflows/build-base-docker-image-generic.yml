@@ -33,7 +33,7 @@ jobs:
           name: ${{ inputs.dockerImage }}
           username: ${{ inputs.dockerUsername }}
           password: ${{ secrets.docker-token }}
-          no_push: ${{ github.ref !== 'refs/heads/main' }}
+          no_push: true #TODO ${{ github.ref !== 'refs/heads/main' }}
           tags: "latest"
 
       - name: Broadcast update event

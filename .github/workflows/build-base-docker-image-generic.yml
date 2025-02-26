@@ -1,0 +1,45 @@
+on:
+  workflow_call:
+    inputs:
+      dockerImage:
+        required: true
+        type: string
+      dockerUsername:
+        required: true
+        type: string
+      eventOrganizations:
+        required: false
+        default: ''
+        type: string
+      eventType:
+        required: true
+        type: string
+    secrets:
+      docker-token:
+        required: true
+      repo-token:
+        required: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v1
+
+      - name: Build and publish Docker image
+        uses: elgohr/Publish-Docker-Github-Action@33a481be3e179353cb7793a92b57cf9a6c985860 # v4
+        with:
+          name: ${{ inputs.dockerImage }}
+          username: ${{ inputs.dockerUsername }}
+          password: ${{ secrets.docker-token }}
+          no_push: ${{ github.ref !== 'refs/heads/main' }}
+          tags: "latest"
+
+      - name: Broadcast update event
+        if: github.ref == 'refs/heads/main'
+        uses: gridsuite/broadcast-event@main
+        with:
+          token: ${{ secrets.repo-token }}
+          organizations: ${{ inputs.eventOrganizations }}
+          event-type: ${{ inputs.eventType }}

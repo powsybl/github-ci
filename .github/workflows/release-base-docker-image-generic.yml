@@ -1,0 +1,86 @@
+on:
+  workflow_call:
+    inputs:
+      githubappId:
+        required: true
+        type: string
+      dockerImage:
+        required: true
+        type: string
+      dockerUsername:
+        required: true
+        type: string
+      releaseVersion:
+        required: true
+        type: string
+      gitReference:
+        required: true
+        type: string
+    secrets:
+      githubappPrivateKey:
+        required: true
+      docker-token:
+        required: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/create-github-app-token@v1
+        id: app-token
+        name: Generate app token
+        with:
+          app-id: ${{ inputs.githubappId }}
+          private-key: ${{ secrets.githubappPrivateKey }}
+
+      - name: Checkout sources
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Parse release version
+        run: |
+          regex="^v([0-9]+)\.([0-9]+)$"
+          if [[ ${{ inputs.releaseVersion }} =~ $regex ]]
+          then
+            echo "GITHUB_MAJOR_VERSION=${BASH_REMATCH[1]}" >> $GITHUB_ENV
+            echo "GITHUB_MINOR_VERSION=${BASH_REMATCH[2]}" >> $GITHUB_ENV
+            echo "GITHUB_SHORT_VERSION=${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.0" >> $GITHUB_ENV
+          else 
+            echo ERROR: release version should match the format vX.X
+            exit 1
+          fi
+
+      - name: Check if release already exists
+        run: |
+          if git ls-remote --quiet --exit-code origin refs/heads/release-${{ inputs.releaseVersion }} >/dev/null 2>&1
+          then
+            echo "ERROR: Release ${{ inputs.releaseVersion }} already exists"
+            exit 1
+          else
+            echo "Release ${{ inputs.releaseVersion }} doesn't exist, it will be performed"
+          fi
+
+      - name: Checkout with new branch
+        run: |
+          git checkout -b release-v${{ env.GITHUB_MAJOR_VERSION }}.${{ env.GITHUB_MINOR_VERSION }} ${{ inputs.gitReference }}
+
+      - name: Create tag
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag v${{ env.GITHUB_SHORT_VERSION }}
+
+      - name: Build and publish Docker image
+        uses: elgohr/Publish-Docker-Github-Action@33a481be3e179353cb7793a92b57cf9a6c985860 # v4
+        with:
+          name: ${{ inputs.dockerImage }}
+          username: ${{ inputs.dockerUsername }}
+          password: ${{ secrets.docker-token }}
+          tags: :${{ env.GITHUB_SHORT_VERSION }}
+
+      - name: Push release branch and tag
+        run: |
+          git push origin release-v${{ env.GITHUB_MAJOR_VERSION }}.${{ env.GITHUB_MINOR_VERSION }}
+          git push origin v${{ env.GITHUB_SHORT_VERSION }}

@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  workflow_call:
+    secrets:
+      DOCKERHUB_TOKEN:
+        required: true
+      FOOBAR:
+        required: true
+      BAZ:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.ref == 'refs/heads/main' && 'release' || '' }}
+    steps:
+      - name: DOIT gridsuiteact
+        run: echo hello
+
+      - name: DOIT dockerhub
+        if: github.ref == 'refs/heads/main'
+        run: echo ${{ secrets.DOCKERHUB_TOKEN }} | wc -c
+
+      - name: DOIT dockerhub
+        run: echo ${{ secrets.DOCKERHUB_TOKEN }} | wc -c
+
+      - name: DOIT dockerhub
+        if: github.ref == 'refs/heads/main'
+        run: echo ${{ secrets.FOOBAR }} | wc -c
+
+      - name: DOIT dockerhub
+        run: echo ${{ secrets.FOOBAR }} | wc -c
+
+      - name: DOIT dockerhub
+        if: github.ref == 'refs/heads/main'
+        run: echo ${{ secrets.BAZ }} | wc -c
+
+      - name: DOIT dockerhub
+        run: echo ${{ secrets.BAZ }} | wc -c

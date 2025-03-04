@@ -13,8 +13,12 @@ on:
         description: 'GitHub App ID for authentication'
         required: true
         type: string
+      environment:
+        required: false
+        default: 'release'
+        type: string
     secrets:
-      githubappPrivateKey:
+      VERSIONBUMP_GHAPP_PRIVATE_KEY:
         required: true
 
 permissions:
@@ -23,6 +27,8 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment }}
     steps:
       - name: Validate Version Type
         run: |
@@ -43,7 +49,7 @@ jobs:
         uses: actions/create-github-app-token@v1
         with:
           app-id: ${{ inputs.githubappId }}
-          private-key: ${{ secrets.githubappPrivateKey }}
+          private-key: ${{ secrets.VERSIONBUMP_GHAPP_PRIVATE_KEY }}
 
       - name: Checkout Repository
         uses: actions/checkout@v4

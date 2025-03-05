@@ -8,13 +8,19 @@ on:
         description: 'Version type increment (major | minor)'
         required: true
         type: string
+      environment:
+        required: false
+        default: 'release'
+        type: string
     secrets:
-      githubappPrivateKey:
+      VERSIONBUMP_GHAPP_PRIVATE_KEY:
         required: true
 
 jobs:
   release:
     runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment }}
     steps:
       - name: Validate Version Type
         run: |
@@ -29,7 +35,7 @@ jobs:
         name: Generate app token
         with:
           app-id: ${{ inputs.githubappId }}
-          private-key: ${{ secrets.githubappPrivateKey }}
+          private-key: ${{ secrets.VERSIONBUMP_GHAPP_PRIVATE_KEY }}
 
       - name: Checkout sources
         uses: actions/checkout@v4

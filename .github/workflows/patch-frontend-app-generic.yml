@@ -16,10 +16,14 @@ on:
         description: 'GitHub App ID for authentication'
         required: true
         type: string
+      environment:
+        required: false
+        default: 'release'
+        type: string
     secrets:
-      githubappPrivateKey:
+      VERSIONBUMP_GHAPP_PRIVATE_KEY:
         required: true
-      docker-token:
+      DOCKERHUB_TOKEN:
         required: true
       sonar-token:
         required: true
@@ -30,13 +34,15 @@ env:
 jobs:
   patch:
     runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment }}
     steps:
       - name: Generate GitHub App Token
         id: app-token
         uses: actions/create-github-app-token@v1
         with:
           app-id: ${{ inputs.githubappId }}
-          private-key: ${{ secrets.githubappPrivateKey }}
+          private-key: ${{ secrets.VERSIONBUMP_GHAPP_PRIVATE_KEY }}
 
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -120,7 +126,7 @@ jobs:
         with:
           name: ${{ inputs.dockerImage }}
           username: ${{ inputs.dockerUsername }}
-          password: ${{ secrets.docker-token }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
           tags: ${{ env.RELEASE_VERSION }}
 
       - name: Push tag and release branch

@@ -7,6 +7,9 @@ on:
       dockerUsername:
         required: true
         type: string
+      dockerRoUsername:
+        required: true
+        type: string
       eventOrganizations:
         required: false
         default: ''
@@ -15,7 +18,9 @@ on:
         required: true
         type: string
     secrets:
-      docker-token:
+      DOCKERHUB_TOKEN:
+        required: true
+      docker-ro-token:
         required: true
       repo-token:
         required: true
@@ -23,6 +28,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.ref == 'refs/heads/main' && inputs.environment || '' }}
     steps:
       - name: Checkout sources
         uses: actions/checkout@v1
@@ -31,8 +38,8 @@ jobs:
         uses: elgohr/Publish-Docker-Github-Action@33a481be3e179353cb7793a92b57cf9a6c985860 # v4
         with:
           name: ${{ inputs.dockerImage }}
-          username: ${{ inputs.dockerUsername }}
-          password: ${{ secrets.docker-token }}
+          username: ${{ github.ref != 'refs/heads/main' && inputs.dockerRoUsername || inputs.dockerUsername }}
+          password: ${{ github.ref != 'refs/heads/main' && secrets.docker-ro-token || secrets.DOCKERHUB_TOKEN }}
           no_push: ${{ github.ref != 'refs/heads/main' }}
           tags: "latest"
 

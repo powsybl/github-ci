@@ -19,24 +19,30 @@ on:
       releaseVersion:
         required: true
         type: string
+      environment:
+        required: false
+        default: 'release'
+        type: string
     secrets:
-      githubappPrivateKey:
+      VERSIONBUMP_GHAPP_PRIVATE_KEY:
         required: true
       sonar-token:
         required: true
-      docker-token:
+      DOCKERHUB_TOKEN:
         required: true
 
 jobs:
   patch:
     runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment }}
     steps:
       - uses: actions/create-github-app-token@v1
         id: app-token
         name: Generate app token
         with:
           app-id: ${{ inputs.githubappId }}
-          private-key: ${{ secrets.githubappPrivateKey }}
+          private-key: ${{ secrets.VERSIONBUMP_GHAPP_PRIVATE_KEY }}
 
       - name: Set up JDK 21
         uses: actions/setup-java@v1
@@ -122,7 +128,7 @@ jobs:
           -Djib.httpTimeout=60000
           -Djib.to.image=${{ inputs.dockerImage }}:${{ env.GITHUB_SHORT_VERSION }}
           -Djib.to.auth.username=${{ inputs.dockerUsername }}
-          -Djib.to.auth.password=${{ secrets.docker-token }}
+          -Djib.to.auth.password=${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Push release branch and tag
         run: |

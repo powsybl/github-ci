@@ -17,6 +17,10 @@ on:
         required: false
         default: 'release'
         type: string
+      permission:
+        required: false
+        default: 'maintain' # "pull" or "triage" or "push" or "maintain" or "admin"
+        type: string
     secrets:
       VERSIONBUMP_GHAPP_PRIVATE_KEY:
         required: true
@@ -30,6 +34,32 @@ jobs:
     environment:
       name: ${{ inputs.environment }}
     steps:
+      # don't allow to disable this check, and for security only succeed if everything goes perfectly and outputs "true"
+      # TODO deduplicate this code when github actions allows to easily share a script used
+      # by reusable workflows. Currently only the workflow file is checked out at the caller
+      # There are no good workarounds to checkout a companion file (script or composite action)
+      - name: Check Actor Permission
+        env:
+          # Need to properly pass permission all the way down to jq as data to avoid script injections
+          PERMISSION: ${{ inputs.permission }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "checking permission=$PERMISSION on repo=$GITHUB_REPOSITORY for user=$GITHUB_ACTOR"
+          # no need to escape GITHUB_REPOSITORY and GITHUB_ACTOR because github
+          # names can only contain ASCII letters, digits, and the characters ., # -, and _.
+          # permission: legacy, is actually a role (one per user) and doesn't
+          #   have "maintain" role, only ["none", "read", "write", "admin"]
+          # role_name: one per user, new standard roles, custom roles, "" and
+          #   "push" and "pull" instead of "none" and "read" and "write": "",
+          #   "read", "triage", "write", "maintain", "admin" and also non
+          #   standard custom roles
+          # user.permissions: boolean status only for each standard permissions "pull", "triage", "push", "maintain", "admin"
+          # So the best for now is to use user.permissions I think.
+          # Not using gh --jq gojq because we can't use variables with it and also it automatically removes quotes from strings which could be an attack vector
+          # the gh api returns a JSON boolean so jq can only output true or false without quotes.
+          allowed=$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$GITHUB_ACTOR/permission" | jq --arg PERMISSION "$PERMISSION" '.user.permissions[$PERMISSION]')
+          [[ "$allowed" == "true" ]] || exit 1
+
       - name: Validate Version Type
         run: |
           if [[ ! "${{ inputs.versionType }}" =~ ^(major|minor|patch)$ ]]; then

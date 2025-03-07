@@ -17,7 +17,7 @@ on:
       githubappPrivateKey:
         required: true
 
-# Permissions needed for creating a release
+# Permissions needed for creating a release (gh release create)
 # Note: Using broader write permissions as there's no more granular permission specifically for releases operations.
 permissions:
   contents: write

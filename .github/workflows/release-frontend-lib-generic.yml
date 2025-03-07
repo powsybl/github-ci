@@ -17,6 +17,11 @@ on:
       githubappPrivateKey:
         required: true
 
+# Permissions needed for creating a release
+# Note: Using broader write permissions as there's no more granular permission specifically for releases operations.
+permissions:
+  contents: write
+
 jobs:
   release:
     runs-on: ubuntu-latest

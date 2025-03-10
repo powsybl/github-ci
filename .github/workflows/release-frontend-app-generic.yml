@@ -105,6 +105,26 @@ jobs:
           echo "RELEASE_VERSION=${MAJOR}.${MINOR}.0" >> $GITHUB_ENV
           echo "RELEASE_BRANCH=release-v${MAJOR}.${MINOR}" >> $GITHUB_ENV
 
+      # TODO deduplicate this code when github actions allows to easily share a script used
+      # by reusable workflows. Currently only the workflow file is checked out at the caller
+      # There are no good workarounds to checkout a companion file (script or composite action)
+      - name: Check if commitSha is already released
+        run: |
+          # needs fetch-depth: 0
+          # This ensures that an old commit (potentially with a security issue) can not be rereleased
+          # as a new version (thus potentially restoring a security issue). This will not block regular
+          # releases because there is always at least the version bump commit in a real new release even if
+          # we are just rereleasing the same code with a new name as part of a global release.
+          if ! release_tags=$(git tag --contains ${{ inputs.commitSha }} 'v[0-9]*'); then
+            echo "ERROR checking whether sha ${{ inputs.commitSha }} is already released or not."
+            exit 1
+          elif [ -n "$release_tags" ]; then
+            echo "ERROR: sha ${{ inputs.commitSha }} already released: $release_tags"
+            exit 1
+          else
+            echo "sha ${{ inputs.commitSha }} never released, release will be performed"
+          fi
+
       - name: Create Release Branch
         run: git checkout -b ${{ env.RELEASE_BRANCH }} ${{ inputs.commitSha }}
 

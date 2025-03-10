@@ -123,6 +123,16 @@ jobs:
             echo "gitRef ${{ inputs.gitReference }} never released, release will be performed"
           fi
 
+      - name: Check if gitReference is merged in main
+        run: |
+          if ! git branch --format='%(refname:short)' --contains ${{ inputs.gitReference }} | grep "^main$"
+          then
+            echo "ERROR: gitRef ${{ inputs.gitReference }} not merged in main"
+            exit 1
+          else
+            echo "gitRef ${{ inputs.gitReference }} merged in main, release will be performed"
+          fi
+
       - name: Checkout with new branch
         run: |
           git checkout -b release-v${{ env.GITHUB_MAJOR_VERSION }}.${{ env.GITHUB_MINOR_VERSION }} ${{ inputs.gitReference }}

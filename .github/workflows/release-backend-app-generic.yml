@@ -111,6 +111,18 @@ jobs:
             echo "Release ${{ inputs.releaseVersion }} doesn't exist, it will be performed"
           fi
 
+      - name: Check if gitReference is already released
+        run: |
+          # TODO make the test not pass when inputs.gitReference is not an actuel gitref
+          # with this simple test, an error in git is interpreted as no release
+          if git tag --contains ${{ inputs.gitReference }} | grep "v[0-9]*"
+          then
+            echo "ERROR: gitRef ${{ inputs.gitReference }} already released."
+            exit 1
+          else
+            echo "gitRef ${{ inputs.gitReference }} never released, release will be performed"
+          fi
+
       - name: Checkout with new branch
         run: |
           git checkout -b release-v${{ env.GITHUB_MAJOR_VERSION }}.${{ env.GITHUB_MINOR_VERSION }} ${{ inputs.gitReference }}

@@ -55,7 +55,7 @@ jobs:
 
       # TODO make a composite action for the next steps to setup git (unless create-github-app-token incorporates all this...)
       # Copied from create-github-app-token README "Configure git CLI for an app's bot user"
-      - uses: actions/create-github-app-token@v1
+      - uses: actions/create-github-app-token@21cfef2b496dd8ef5b904c159339626a10ad380e # v1 v1.11.6
         id: app-token
         name: Generate app token
         with:
@@ -76,7 +76,7 @@ jobs:
           RUNGHA_USER_ID: ${{ steps.get-user-id.outputs.user-id }} # just for defense against script injection
 
       - name: Checkout sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4 v4.2.2
         with:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}

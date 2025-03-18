@@ -1,12 +1,6 @@
 on:
   workflow_call:
     inputs:
-      sonarOrganization:
-        required: true
-        type: string
-      sonarProjectKey:
-        required: true
-        type: string
       dockerImage:
         required: true
         type: string
@@ -47,8 +41,6 @@ jobs:
         run: >
           mvn --batch-mode -DskipTests sonar:sonar
           -Dsonar.host.url=https://sonarcloud.io
-          -Dsonar.organization=${{ inputs.sonarOrganization }}
-          -Dsonar.projectKey=${{ inputs.sonarProjectKey }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.sonar-token }}

@@ -4,12 +4,6 @@ on:
       githubappId:
         required: true
         type: string
-      sonarOrganization:
-        required: true
-        type: string
-      sonarProjectKey:
-        required: true
-        type: string
       dockerImage:
         required: true
         type: string
@@ -218,8 +212,6 @@ jobs:
         run: >
           mvn --batch-mode -DskipTests sonar:sonar
           -Dsonar.host.url=https://sonarcloud.io
-          -Dsonar.organization="$RUNGHA_SONAR_ORGANIZATION"
-          -Dsonar.projectKey="$RUNGHA_SONAR_PROJECT_KEY"
         env:
           SONAR_TOKEN: ${{ secrets.sonar-token }}
           RUNGHA_SONAR_ORGANIZATION: ${{ inputs.sonarOrganization }} # just for defense against script injection

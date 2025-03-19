@@ -20,6 +20,10 @@ on:
         required: false
         default: 'release'
         type: string
+      permission:
+        required: false
+        default: 'maintain' # "pull" or "triage" or "push" or "maintain" or "admin"
+        type: string
     secrets:
       VERSIONBUMP_GHAPP_PRIVATE_KEY:
         required: true
@@ -44,7 +48,7 @@ jobs:
       - name: Check Actor Permission
         env:
           # Need to properly pass permission all the way down to jq as data to avoid script injections
-          PERMISSION: 'maintain'
+          PERMISSION: ${{ inputs.permission }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "checking permission=$PERMISSION on repo=$GITHUB_REPOSITORY for user=$GITHUB_ACTOR"

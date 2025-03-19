@@ -5,9 +5,11 @@ on:
         required: true
         type: string
       dockerUsername:
+        description: 'Used to write latest images after the PR is merged in main'
         required: true
         type: string
       dockerRoUsername:
+        description: 'Used to read the images (FROM: clause in the Dockerfile) to test the Dockerfile in the PR'
         required: true
         type: string
       eventOrganizations:

@@ -17,6 +17,10 @@ on:
       eventType:
         required: true
         type: string
+      environment:
+        required: false
+        default: 'release'
+        type: string
     secrets:
       DOCKERHUB_TOKEN:
         required: true

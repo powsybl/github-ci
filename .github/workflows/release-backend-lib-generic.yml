@@ -12,10 +12,6 @@ on:
         required: false
         default: 'release'
         type: string
-      permission:
-        required: false
-        default: 'maintain' # "pull" or "triage" or "push" or "maintain" or "admin"
-        type: string
     secrets:
       VERSIONBUMP_GHAPP_PRIVATE_KEY:
         required: true
@@ -32,11 +28,9 @@ jobs:
       # There are no good workarounds to checkout a companion file (script or composite action)
       - name: Check Actor Permission
         env:
-          # Need to properly pass permission all the way down to jq as data to avoid script injections
-          PERMISSION: ${{ inputs.permission }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "checking permission=$PERMISSION on repo=$GITHUB_REPOSITORY for user=$GITHUB_ACTOR"
+          echo "checking permission=maintain on repo=$GITHUB_REPOSITORY for user=$GITHUB_ACTOR"
           # no need to escape GITHUB_REPOSITORY and GITHUB_ACTOR because github
           # names can only contain ASCII letters, digits, and the characters ., # -, and _.
           # permission: legacy, is actually a role (one per user) and doesn't
@@ -47,9 +41,9 @@ jobs:
           #   standard custom roles
           # user.permissions: boolean status only for each standard permissions "pull", "triage", "push", "maintain", "admin"
           # So the best for now is to use user.permissions I think.
-          # Not using gh --jq gojq because we can't use variables with it and also it automatically removes quotes from strings which could be an attack vector
-          # the gh api returns a JSON boolean so jq can only output true or false without quotes.
-          allowed=$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$GITHUB_ACTOR/permission" | jq --arg PERMISSION "$PERMISSION" '.user.permissions[$PERMISSION]')
+          # NOTE: the gh api returns a JSON boolean so jq can only output true or false without quotes
+          # (actually even for JSON strings gh's gojq implementation strips the quotes by default unlike jq)
+          allowed=$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$GITHUB_ACTOR/permission" --jq '.user.permissions["maintain"]')
           [[ "$allowed" == "true" ]] || exit 1
 
       - name: Validate Version Type

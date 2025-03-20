@@ -58,19 +58,34 @@ jobs:
           # user.permissions: boolean status only for each standard permissions "pull", "triage", "push", "maintain", "admin"
           # So the best for now is to use user.permissions I think.
           # Not using gh --jq gojq because we can't use variables with it and also it automatically removes quotes from strings which could be an attack vector
-          # the gh api returns a JSON boolean so jq can only output true or false without quotes.
+          # NOTE: the gh api returns a JSON boolean so jq can only output true or false without quotes
           allowed=$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$GITHUB_ACTOR/permission" | jq --arg PERMISSION "$PERMISSION" '.user.permissions[$PERMISSION]')
           [[ "$allowed" == "true" ]] || exit 1
 
-      - uses: actions/create-github-app-token@v1
+      # TODO make a composite action for the next steps to setup git (unless create-github-app-token incorporates all this...)
+      # Copied from create-github-app-token README "Configure git CLI for an app's bot user"
+      - uses: actions/create-github-app-token@21cfef2b496dd8ef5b904c159339626a10ad380e # v1 v1.11.6
         id: app-token
         name: Generate app token
         with:
           app-id: ${{ inputs.githubappId }}
           private-key: ${{ secrets.VERSIONBUMP_GHAPP_PRIVATE_KEY }}
+      - name: Get GitHub App User ID
+        id: get-user-id
+        run: echo "user-id=$(gh api "/users/${RUNGHA_APP_SLUG}[bot]" --jq .id)" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          RUNGHA_APP_SLUG: ${{ steps.app-token.outputs.app-slug }} # just for defense against script injection
+      - name: Setup git user
+        run: |
+          git config --global user.name "${RUNGHA_APP_SLUG}[bot]"
+          git config --global user.email "${RUNGHA_USER_ID}+${RUNGHA_APP_SLUG}[bot]@users.noreply.github.com"
+        env:
+          RUNGHA_APP_SLUG: ${{ steps.app-token.outputs.app-slug }} # just for defense against script injection
+          RUNGHA_USER_ID: ${{ steps.get-user-id.outputs.user-id }} # just for defense against script injection
 
       - name: Checkout sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4 v4.2.2
         with:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
@@ -78,7 +93,7 @@ jobs:
       - name: Parse release version
         run: |
           regex="^v([0-9]+)\.([0-9]+)$"
-          if [[ ${{ inputs.releaseVersion }} =~ $regex ]]
+          if [[ $RUNGHA_RELEASE_VERSION =~ $regex ]]
           then
             echo "GITHUB_MAJOR_VERSION=${BASH_REMATCH[1]}" >> $GITHUB_ENV
             echo "GITHUB_MINOR_VERSION=${BASH_REMATCH[2]}" >> $GITHUB_ENV
@@ -87,26 +102,76 @@ jobs:
             echo ERROR: release version should match the format vX.X
             exit 1
           fi
+        env:
+          RUNGHA_RELEASE_VERSION: ${{ inputs.releaseVersion }} # just for defense against script injection
 
       - name: Check if release already exists
         run: |
-          if git ls-remote --quiet --exit-code origin refs/heads/release-${{ inputs.releaseVersion }} >/dev/null 2>&1
+          if git ls-remote --quiet --exit-code origin "refs/heads/release-$RUNGHA_RELEASE_VERSION" >/dev/null 2>&1
           then
-            echo "ERROR: Release ${{ inputs.releaseVersion }} already exists"
+            echo "ERROR: Release $RUNGHA_RELEASE_VERSION already exists"
             exit 1
           else
-            echo "Release ${{ inputs.releaseVersion }} doesn't exist, it will be performed"
+            echo "Release $RUNGHA_RELEASE_VERSION doesn't exist, it will be performed"
           fi
+        env:
+          RUNGHA_RELEASE_VERSION: ${{ inputs.releaseVersion }} # just for defense against script injection
+
+      # TODO deduplicate this code when github actions allows to easily share a script used
+      # by reusable workflows. Currently only the workflow file is checked out at the caller
+      # There are no good workarounds to checkout a companion file (script or composite action)
+      - name: Check if gitReference is already released
+        run: |
+          # needs fetch-depth: 0
+          # This ensures that an old commit (potentially with a security issue) can not be rereleased
+          # as a new version (thus potentially restoring a security issue). This will not block regular
+          # releases because there is always at least the version bump commit in a real new release even if
+          # we are just rereleasing the same code with a new name as part of a global release.
+          if ! release_tags=$(git tag --contains "$RUNGHA_GIT_REFERENCE" 'v[0-9]*'); then
+            echo "ERROR checking whether gitRef $RUNGHA_GIT_REFERENCE is already released or not."
+            exit 1
+          elif [ -n "$release_tags" ]; then
+            echo "ERROR: gitRef $RUNGHA_GIT_REFERENCE already released: $release_tags"
+            exit 1
+          else
+            echo "gitRef $RUNGHA_GIT_REFERENCE never released, release will be performed"
+          fi
+        env:
+          RUNGHA_GIT_REFERENCE: ${{ inputs.gitReference }} # just for defense against script injection
+
+      # TODO deduplicate this code when github actions allows to easily share a script used
+      # by reusable workflows. Currently only the workflow file is checked out at the caller
+      # There are no good workarounds to checkout a companion file (script or composite action)
+      - name: Check if gitReference is merged in main
+        run: |
+          # needs fetch-depth: 0
+          # This ensures that only reviewed commits can be released because
+          # we require reviews and pull requests to allow to merge in main.
+          if ! main_contains=$(git branch -r --format='%(refname:short)' --contains "$RUNGHA_GIT_REFERENCE" origin/main); then
+            echo "ERROR checking whether gitRef $RUNGHA_GIT_REFERENCE is merged in main or not"
+            exit 1
+          elif [ -z "$main_contains" ]; then
+            echo "ERROR: gitRef $RUNGHA_GIT_REFERENCE not merged in main"
+            exit 1
+          else
+            echo "gitRef $RUNGHA_GIT_REFERENCE merged in main, release will be performed"
+          fi
+        env:
+          RUNGHA_GIT_REFERENCE: ${{ inputs.gitReference }} # just for defense against script injection
 
       - name: Checkout with new branch
         run: |
-          git checkout -b release-v${{ env.GITHUB_MAJOR_VERSION }}.${{ env.GITHUB_MINOR_VERSION }} ${{ inputs.gitReference }}
+          git checkout -b "release-v${RUNGHA_GITHUB_MAJOR_VERSION}.${RUNGHA_GITHUB_MINOR_VERSION}" "$RUNGHA_GIT_REFERENCE"
+        env:
+          RUNGHA_GITHUB_MAJOR_VERSION: ${{ env.GITHUB_MAJOR_VERSION }} # just for defense against script injection
+          RUNGHA_GITHUB_MINOR_VERSION: ${{ env.GITHUB_MINOR_VERSION }} # just for defense against script injection
+          RUNGHA_GIT_REFERENCE: ${{ inputs.gitReference }} # just for defense against script injection
 
       - name: Create tag
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag v${{ env.GITHUB_SHORT_VERSION }}
+          git tag "v$RUNGHA_GITHUB_SHORT_VERSION"
+        env:
+          RUNGHA_GITHUB_SHORT_VERSION: ${{ env.GITHUB_SHORT_VERSION }} # just for defense against script injection
 
       - name: Build and publish Docker image
         uses: elgohr/Publish-Docker-Github-Action@33a481be3e179353cb7793a92b57cf9a6c985860 # v4
@@ -118,5 +183,9 @@ jobs:
 
       - name: Push release branch and tag
         run: |
-          git push origin release-v${{ env.GITHUB_MAJOR_VERSION }}.${{ env.GITHUB_MINOR_VERSION }}
-          git push origin v${{ env.GITHUB_SHORT_VERSION }}
+          git push origin "release-v${RUNGHA_GITHUB_MAJOR_VERSION}.${RUNGHA_GITHUB_MINOR_VERSION}"
+          git push origin "v$RUNGHA_GITHUB_SHORT_VERSION"
+        env:
+          RUNGHA_GITHUB_MAJOR_VERSION: ${{ env.GITHUB_MAJOR_VERSION }} # just for defense against script injection
+          RUNGHA_GITHUB_MINOR_VERSION: ${{ env.GITHUB_MINOR_VERSION }} # just for defense against script injection
+          RUNGHA_GITHUB_SHORT_VERSION: ${{ env.GITHUB_SHORT_VERSION }} # just for defense against script injection

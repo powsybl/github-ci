@@ -48,40 +48,57 @@ jobs:
           # user.permissions: boolean status only for each standard permissions "pull", "triage", "push", "maintain", "admin"
           # So the best for now is to use user.permissions I think.
           # Not using gh --jq gojq because we can't use variables with it and also it automatically removes quotes from strings which could be an attack vector
-          # the gh api returns a JSON boolean so jq can only output true or false without quotes.
+          # NOTE: the gh api returns a JSON boolean so jq can only output true or false without quotes
           allowed=$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$GITHUB_ACTOR/permission" | jq --arg PERMISSION "$PERMISSION" '.user.permissions[$PERMISSION]')
           [[ "$allowed" == "true" ]] || exit 1
 
       - name: Validate branch name format
         run: |
-          if [[ ! "${{ inputs.branchRef }}" =~ ^release-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          if [[ ! "$RUNGHA_BRANCH_REF" =~ ^release-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "Invalid branch name format. Expected format: release-vX.Y.Z"
             exit 1
           fi
+        env:
+          RUNGHA_BRANCH_REF: ${{ inputs.branchRef }} # just for defense against script injection
 
-      - uses: actions/create-github-app-token@v1
+      # TODO make a composite action for the next steps to setup git (unless create-github-app-token incorporates all this...)
+      # Copied from create-github-app-token README "Configure git CLI for an app's bot user"
+      - uses: actions/create-github-app-token@21cfef2b496dd8ef5b904c159339626a10ad380e # v1 v1.11.6
         id: app-token
         name: Generate app token
         with:
           app-id: ${{ inputs.githubappId }}
           private-key: ${{ secrets.VERSIONBUMP_GHAPP_PRIVATE_KEY }}
+      - name: Get GitHub App User ID
+        id: get-user-id
+        run: echo "user-id=$(gh api "/users/${RUNGHA_APP_SLUG}[bot]" --jq .id)" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          RUNGHA_APP_SLUG: ${{ steps.app-token.outputs.app-slug }} # just for defense against script injection
+      - name: Setup git user
+        run: |
+          git config --global user.name "${RUNGHA_APP_SLUG}[bot]"
+          git config --global user.email "${RUNGHA_USER_ID}+${RUNGHA_APP_SLUG}[bot]@users.noreply.github.com"
+        env:
+          RUNGHA_APP_SLUG: ${{ steps.app-token.outputs.app-slug }} # just for defense against script injection
+          RUNGHA_USER_ID: ${{ steps.get-user-id.outputs.user-id }} # just for defense against script injection
 
       - name: Checkout sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4 v4.2.2
         with:
           token: ${{ steps.app-token.outputs.token }}
           ref: ${{ inputs.branchRef }}
           fetch-depth: 0
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v1
+        uses: actions/setup-java@b6e674f4b717d7b0ae3baee0fbe79f498905dfde # v1 v1.4.4
         with:
           java-version: 21
 
       - name: Extract version and validate tag
         id: versions
         run: |
-          PATCH_VERSION=$(echo "${{ inputs.branchRef }}" | sed 's/release-v\(.*\)/\1/')
+          PATCH_VERSION=$(echo "$RUNGHA_BRANCH_REF" | sed 's/release-v\(.*\)/\1/')
           
           if git rev-parse "v${PATCH_VERSION}" >/dev/null 2>&1; then
             echo "Tag v${PATCH_VERSION} already exists"
@@ -90,28 +107,32 @@ jobs:
           
           echo "PATCH_VERSION=${PATCH_VERSION}" >> $GITHUB_OUTPUT
           echo "Patch version will be: ${PATCH_VERSION}"
-
-      - name: Configure Git
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        env:
+          RUNGHA_BRANCH_REF: ${{ inputs.branchRef }} # just for defense against script injection
 
       - name: Set patch version
         run: |
-          mvn versions:set -DnewVersion=${{ steps.versions.outputs.PATCH_VERSION }} -DgenerateBackupPoms=false
-          git commit -am "Patched version ${{ steps.versions.outputs.PATCH_VERSION }}"
+          mvn versions:set -DnewVersion="$RUNGHA_PATCH_VERSION" -DgenerateBackupPoms=false
+          git commit -am "Patched version $RUNGHA_PATCH_VERSION"
+        env:
+          RUNGHA_PATCH_VERSION: ${{ steps.versions.outputs.PATCH_VERSION }} # just for defense against script injection
 
       - name: Create and push tag
         run: |
-          git tag v${{ steps.versions.outputs.PATCH_VERSION }}
-          git push origin v${{ steps.versions.outputs.PATCH_VERSION }}
-          git push origin ${{ inputs.branchRef }}
+          git tag "v$RUNGHA_PATCH_VERSION"
+          git push origin "v$RUNGHA_PATCH_VERSION"
+          git push origin "$RUNGHA_BRANCH_REF"
+        env:
+          RUNGHA_PATCH_VERSION: ${{ steps.versions.outputs.PATCH_VERSION }} # just for defense against script injection
+          RUNGHA_BRANCH_REF: ${{ inputs.branchRef }} # just for defense against script injection
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          RUNGHA_PATCH_VERSION: ${{ steps.versions.outputs.PATCH_VERSION }} # just for defense against script injection
+          RUNGHA_BRANCH_REF: ${{ inputs.branchRef }} # just for defense against script injection
         run: |
-          gh release create v${{ steps.versions.outputs.PATCH_VERSION }} \
-            --title "v${{ steps.versions.outputs.PATCH_VERSION }}" \
+          gh release create "v$RUNGHA_PATCH_VERSION" \
+            --title "v$RUNGHA_PATCH_VERSION" \
             --generate-notes \
-            --notes "Patch release based on ${{ inputs.branchRef }}"
+            --notes "Patch release based on $RUNGHA_BRANCH_REF"

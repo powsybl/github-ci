@@ -32,6 +32,30 @@ jobs:
     environment:
       name: ${{ inputs.environment }}
     steps:
+      # don't allow to disable this check, and for security only succeed if everything goes perfectly and outputs "true"
+      # TODO deduplicate this code when github actions allows to easily share a script used
+      # by reusable workflows. Currently only the workflow file is checked out at the caller
+      # There are no good workarounds to checkout a companion file (script or composite action)
+      - name: Check Actor Permission
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "checking permission=maintain on repo=$GITHUB_REPOSITORY for user=$GITHUB_ACTOR"
+          # no need to escape GITHUB_REPOSITORY and GITHUB_ACTOR because github
+          # names can only contain ASCII letters, digits, and the characters ., # -, and _.
+          # permission: legacy, is actually a role (one per user) and doesn't
+          #   have "maintain" role, only ["none", "read", "write", "admin"]
+          # role_name: one per user, new standard roles, custom roles, "" and
+          #   "push" and "pull" instead of "none" and "read" and "write": "",
+          #   "read", "triage", "write", "maintain", "admin" and also non
+          #   standard custom roles
+          # user.permissions: boolean status only for each standard permissions "pull", "triage", "push", "maintain", "admin"
+          # So the best for now is to use user.permissions I think.
+          # NOTE: the gh api returns a JSON boolean so jq can only output true or false without quotes
+          # (actually even for JSON strings gh's gojq implementation strips the quotes by default unlike jq)
+          allowed=$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$GITHUB_ACTOR/permission" --jq '.user.permissions["maintain"]')
+          [[ "$allowed" == "true" ]] || exit 1
+
       - name: Validate Version Type
         run: |
           if [[ ! "${{ inputs.versionType }}" =~ ^(major|minor|patch)$ ]]; then

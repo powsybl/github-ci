@@ -125,6 +125,24 @@ jobs:
             echo "gitRef ${{ inputs.gitReference }} never released, release will be performed"
           fi
 
+      # TODO deduplicate this code when github actions allows to easily share a script used
+      # by reusable workflows. Currently only the workflow file is checked out at the caller
+      # There are no good workarounds to checkout a companion file (script or composite action)
+      - name: Check if gitReference is merged in main
+        run: |
+          # needs fetch-depth: 0
+          # This ensures that only reviewed commits can be released because
+          # we require reviews and pull requests to allow to merge in main.
+          if ! main_contains=$(git branch -r --format='%(refname:short)' --contains ${{ inputs.gitReference }} origin/main); then
+            echo "ERROR checking whether gitRef ${{ inputs.gitReference }} is merged in main or not"
+            exit 1
+          elif [ -z "$main_contains" ]; then
+            echo "ERROR: gitRef ${{ inputs.gitReference }} not merged in main"
+            exit 1
+          else
+            echo "gitRef ${{ inputs.gitReference }} merged in main, release will be performed"
+          fi
+
       - name: Checkout with new branch
         run: |
           git checkout -b release-v${{ env.GITHUB_MAJOR_VERSION }}.${{ env.GITHUB_MINOR_VERSION }} ${{ inputs.gitReference }}

@@ -74,13 +74,17 @@ jobs:
           private-key: ${{ secrets.VERSIONBUMP_GHAPP_PRIVATE_KEY }}
       - name: Get GitHub App User ID
         id: get-user-id
-        run: echo "user-id=$(gh api "/users/${{ steps.app-token.outputs.app-slug }}[bot]" --jq .id)" >> "$GITHUB_OUTPUT"
+        run: echo "user-id=$(gh api "/users/${RUNGHA_APP_SLUG}[bot]" --jq .id)" >> "$GITHUB_OUTPUT"
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          RUNGHA_APP_SLUG: ${{ steps.app-token.outputs.app-slug }} # just for defense against script injection
       - name: Setup git user
         run: |
-          git config --global user.name '${{ steps.app-token.outputs.app-slug }}[bot]'
-          git config --global user.email '${{ steps.get-user-id.outputs.user-id }}+${{ steps.app-token.outputs.app-slug }}[bot]@users.noreply.github.com'
+          git config --global user.name "${RUNGHA_APP_SLUG}[bot]"
+          git config --global user.email "${RUNGHA_USER_ID}+${RUNGHA_APP_SLUG}[bot]@users.noreply.github.com"
+        env:
+          RUNGHA_APP_SLUG: ${{ steps.app-token.outputs.app-slug }} # just for defense against script injection
+          RUNGHA_USER_ID: ${{ steps.get-user-id.outputs.user-id }} # just for defense against script injection
 
       - name: Set up JDK 21
         uses: actions/setup-java@v1
@@ -96,7 +100,7 @@ jobs:
       - name: Parse release version
         run: |
           regex="^v([0-9]+)\.([0-9]+)$"
-          if [[ ${{ inputs.releaseVersion }} =~ $regex ]]
+          if [[ $RUNGHA_RELEASE_VERSION =~ $regex ]]
           then
             echo "GITHUB_MAJOR_VERSION=${BASH_REMATCH[1]}" >> $GITHUB_ENV
             echo "GITHUB_MINOR_VERSION=${BASH_REMATCH[2]}" >> $GITHUB_ENV
@@ -105,16 +109,20 @@ jobs:
             echo ERROR: release version should match the format vX.X
             exit 1
           fi
+        env:
+          RUNGHA_RELEASE_VERSION: ${{ inputs.releaseVersion }} # just for defense against script injection
 
       - name: Check if release already exists
         run: |
-          if git ls-remote --quiet --exit-code origin refs/heads/release-${{ inputs.releaseVersion }} >/dev/null 2>&1
+          if git ls-remote --quiet --exit-code origin "refs/heads/release-$RUNGHA_RELEASE_VERSION" >/dev/null 2>&1
           then
-            echo "ERROR: Release ${{ inputs.releaseVersion }} already exists"
+            echo "ERROR: Release $RUNGHA_RELEASE_VERSION already exists"
             exit 1
           else
-            echo "Release ${{ inputs.releaseVersion }} doesn't exist, it will be performed"
+            echo "Release $RUNGHA_RELEASE_VERSION doesn't exist, it will be performed"
           fi
+        env:
+          RUNGHA_RELEASE_VERSION: ${{ inputs.releaseVersion }} # just for defense against script injection
 
       # TODO deduplicate this code when github actions allows to easily share a script used
       # by reusable workflows. Currently only the workflow file is checked out at the caller
@@ -126,15 +134,17 @@ jobs:
           # as a new version (thus potentially restoring a security issue). This will not block regular
           # releases because there is always at least the version bump commit in a real new release even if
           # we are just rereleasing the same code with a new name as part of a global release.
-          if ! release_tags=$(git tag --contains ${{ inputs.gitReference }} 'v[0-9]*'); then
-            echo "ERROR checking whether gitRef ${{ inputs.gitReference }} is already released or not."
+          if ! release_tags=$(git tag --contains "$RUNGHA_GIT_REFERENCE" 'v[0-9]*'); then
+            echo "ERROR checking whether gitRef $RUNGHA_GIT_REFERENCE is already released or not."
             exit 1
           elif [ -n "$release_tags" ]; then
-            echo "ERROR: gitRef ${{ inputs.gitReference }} already released: $release_tags"
+            echo "ERROR: gitRef $RUNGHA_GIT_REFERENCE already released: $release_tags"
             exit 1
           else
-            echo "gitRef ${{ inputs.gitReference }} never released, release will be performed"
+            echo "gitRef $RUNGHA_GIT_REFERENCE never released, release will be performed"
           fi
+        env:
+          RUNGHA_GIT_REFERENCE: ${{ inputs.gitReference }} # just for defense against script injection
 
       # TODO deduplicate this code when github actions allows to easily share a script used
       # by reusable workflows. Currently only the workflow file is checked out at the caller
@@ -144,28 +154,38 @@ jobs:
           # needs fetch-depth: 0
           # This ensures that only reviewed commits can be released because
           # we require reviews and pull requests to allow to merge in main.
-          if ! main_contains=$(git branch -r --format='%(refname:short)' --contains ${{ inputs.gitReference }} origin/main); then
-            echo "ERROR checking whether gitRef ${{ inputs.gitReference }} is merged in main or not"
+          if ! main_contains=$(git branch -r --format='%(refname:short)' --contains "$RUNGHA_GIT_REFERENCE" origin/main); then
+            echo "ERROR checking whether gitRef $RUNGHA_GIT_REFERENCE is merged in main or not"
             exit 1
           elif [ -z "$main_contains" ]; then
-            echo "ERROR: gitRef ${{ inputs.gitReference }} not merged in main"
+            echo "ERROR: gitRef $RUNGHA_GIT_REFERENCE not merged in main"
             exit 1
           else
-            echo "gitRef ${{ inputs.gitReference }} merged in main, release will be performed"
+            echo "gitRef $RUNGHA_GIT_REFERENCE merged in main, release will be performed"
           fi
+        env:
+          RUNGHA_GIT_REFERENCE: ${{ inputs.gitReference }} # just for defense against script injection
 
       - name: Checkout with new branch
         run: |
-          git checkout -b release-v${{ env.GITHUB_MAJOR_VERSION }}.${{ env.GITHUB_MINOR_VERSION }} ${{ inputs.gitReference }}
+          git checkout -b "release-v${RUNGHA_GITHUB_MAJOR_VERSION}.${RUNGHA_GITHUB_MINOR_VERSION}" "$RUNGHA_GIT_REFERENCE"
+        env:
+          RUNGHA_GITHUB_MAJOR_VERSION: ${{ env.GITHUB_MAJOR_VERSION }} # just for defense against script injection
+          RUNGHA_GITHUB_MINOR_VERSION: ${{ env.GITHUB_MINOR_VERSION }} # just for defense against script injection
+          RUNGHA_GIT_REFERENCE: ${{ inputs.gitReference }} # just for defense against script injection
 
       - name: Change Maven version to release version
-        run: mvn --batch-mode versions:set -DgenerateBackupPoms=false -DnewVersion=${{ env.GITHUB_SHORT_VERSION }}
+        run: mvn --batch-mode versions:set -DgenerateBackupPoms=false -DnewVersion="$RUNGHA_GITHUB_SHORT_VERSION"
+        env:
+          RUNGHA_GITHUB_SHORT_VERSION: ${{ env.GITHUB_SHORT_VERSION }} # just for defense against script injection
 
       - name: Create local commit and tag
         run: |
           git add .
-          git commit -m "Release v${{ env.GITHUB_SHORT_VERSION }}"
-          git tag v${{ env.GITHUB_SHORT_VERSION }}
+          git commit -m "Release v$RUNGHA_GITHUB_SHORT_VERSION"
+          git tag "v$RUNGHA_GITHUB_SHORT_VERSION"
+        env:
+          RUNGHA_GITHUB_SHORT_VERSION: ${{ env.GITHUB_SHORT_VERSION }} # just for defense against script injection
 
       - name: Build with Maven
         run: mvn --batch-mode -Pjacoco verify
@@ -174,23 +194,34 @@ jobs:
         run: >
           mvn --batch-mode -DskipTests sonar:sonar
           -Dsonar.host.url=https://sonarcloud.io
-          -Dsonar.organization=${{ inputs.sonarOrganization }}
-          -Dsonar.projectKey=${{ inputs.sonarProjectKey }}
+          -Dsonar.organization="$RUNGHA_SONAR_ORGANIZATION"
+          -Dsonar.projectKey="$RUNGHA_SONAR_PROJECT_KEY"
         env:
           SONAR_TOKEN: ${{ secrets.sonar-token }}
+          RUNGHA_SONAR_ORGANIZATION: ${{ inputs.sonarOrganization }} # just for defense against script injection
+          RUNGHA_SONAR_PROJECT_KEY: ${{ inputs.sonarProjectKey }} # just for defense against script injection
 
       - name: Build Docker image
         run: >
           mvn --batch-mode deploy -DskipTests -Dmaven.install.skip -Dmaven.deploy.skip -Dpowsybl.docker.deploy
           -Djib.httpTimeout=60000
-          -Djib.to.image=${{ inputs.dockerImage }}:${{ env.GITHUB_SHORT_VERSION }}
-          -Djib.to.auth.username=${{ inputs.dockerUsername }}
-          -Djib.to.auth.password=${{ secrets.DOCKERHUB_TOKEN }}
+          -Djib.to.image="$RUNGHA_DOCKER_IMAGE:$RUNGHA_GITHUB_SHORT_VERSION"
+          -Djib.to.auth.username="$RUNGHA_DOCKER_USERNAME"
+          -Djib.to.auth.password="$RUNGHA_DOCKERHUB_TOKEN"
+        env:
+          RUNGHA_DOCKER_IMAGE: ${{ inputs.dockerImage }} # just for defense against script injection
+          RUNGHA_DOCKER_USERNAME: ${{ inputs.dockerUsername }} # just for defense against script injection
+          RUNGHA_DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }} # just for defense against script injection
+          RUNGHA_GITHUB_SHORT_VERSION: ${{ env.GITHUB_SHORT_VERSION }} # just for defense against script injection
 
       - name: Push release branch and tag
         run: |
-          git push origin release-v${{ env.GITHUB_MAJOR_VERSION }}.${{ env.GITHUB_MINOR_VERSION }}
-          git push origin v${{ env.GITHUB_SHORT_VERSION }}
+          git push origin "release-v${RUNGHA_GITHUB_MAJOR_VERSION}.${RUNGHA_GITHUB_MINOR_VERSION}"
+          git push origin "v$RUNGHA_GITHUB_SHORT_VERSION"
+        env:
+          RUNGHA_GITHUB_MAJOR_VERSION: ${{ env.GITHUB_MAJOR_VERSION }} # just for defense against script injection
+          RUNGHA_GITHUB_MINOR_VERSION: ${{ env.GITHUB_MINOR_VERSION }} # just for defense against script injection
+          RUNGHA_GITHUB_SHORT_VERSION: ${{ env.GITHUB_SHORT_VERSION }} # just for defense against script injection
 
       - name: Checkout main
         run: |
@@ -204,17 +235,22 @@ jobs:
       - name: Extract current version
         run: |
           regex="(.*)-SNAPSHOT"
-          if [[ ${{ env.CURRENT_MAVEN_VERSION }} =~ $regex ]]
+          if [[ $RUNGHA_CURRENT_MAVEN_VERSION =~ $regex ]]
           then
             echo "CURRENT_RELEASE_VERSION=${BASH_REMATCH[1]}" >> $GITHUB_ENV
           fi
+        env:
+          RUNGHA_CURRENT_MAVEN_VERSION: ${{ env.CURRENT_MAVEN_VERSION }} # just for defense against script injection
 
       - name: Update SNAPSHOT version on main
         if: env.CURRENT_RELEASE_VERSION == env.GITHUB_SHORT_VERSION
         run: |
-          minor=${{ env.GITHUB_MINOR_VERSION }}
+          minor=$RUNGHA_GITHUB_MINOR_VERSION
           ((++minor))
-          mvn --batch-mode versions:set -DgenerateBackupPoms=false -DnewVersion=${{ env.GITHUB_MAJOR_VERSION }}.$minor.0-SNAPSHOT
+          mvn --batch-mode versions:set -DgenerateBackupPoms=false -DnewVersion=$RUNGHA_GITHUB_MAJOR_VERSION.$minor.0-SNAPSHOT
           git add .
-          git commit -m "Update SNAPSHOT version to v${{ env.GITHUB_MAJOR_VERSION }}.$minor.0"
+          git commit -m "Update SNAPSHOT version to v$RUNGHA_GITHUB_MAJOR_VERSION.$minor.0"
           git push
+        env:
+          RUNGHA_GITHUB_MAJOR_VERSION: ${{ env.GITHUB_MAJOR_VERSION }} # just for defense against script injection
+          RUNGHA_GITHUB_MINOR_VERSION: ${{ env.GITHUB_MINOR_VERSION }} # just for defense against script injection

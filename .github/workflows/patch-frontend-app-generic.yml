@@ -71,13 +71,17 @@ jobs:
           private-key: ${{ secrets.VERSIONBUMP_GHAPP_PRIVATE_KEY }}
       - name: Get GitHub App User ID
         id: get-user-id
-        run: echo "user-id=$(gh api "/users/${{ steps.app-token.outputs.app-slug }}[bot]" --jq .id)" >> "$GITHUB_OUTPUT"
+        run: echo "user-id=$(gh api "/users/${RUNGHA_APP_SLUG}[bot]" --jq .id)" >> "$GITHUB_OUTPUT"
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          RUNGHA_APP_SLUG: ${{ steps.app-token.outputs.app-slug }} # just for defense against script injection
       - name: Setup git user
         run: |
-          git config --global user.name '${{ steps.app-token.outputs.app-slug }}[bot]'
-          git config --global user.email '${{ steps.get-user-id.outputs.user-id }}+${{ steps.app-token.outputs.app-slug }}[bot]@users.noreply.github.com'
+          git config --global user.name "${RUNGHA_APP_SLUG}[bot]"
+          git config --global user.email "${RUNGHA_USER_ID}+${RUNGHA_APP_SLUG}[bot]@users.noreply.github.com"
+        env:
+          RUNGHA_APP_SLUG: ${{ steps.app-token.outputs.app-slug }} # just for defense against script injection
+          RUNGHA_USER_ID: ${{ steps.get-user-id.outputs.user-id }} # just for defense against script injection
 
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -94,26 +98,32 @@ jobs:
       - name: Parse release version
         run: |
           regex="^v([0-9]+)\.([0-9]+)$"
-          if [[ ${{ inputs.releaseVersion }} =~ $regex ]]
+          if [[ $RUNGHA_RELEASE_VERSION =~ $regex ]]
           then
             echo Release version matches vX.X format
           else 
             echo ERROR: release version should match the format vX.X
             exit 1
           fi
+        env:
+          RUNGHA_RELEASE_VERSION: ${{ inputs.releaseVersion }} # just for defense against script injection
 
       - name: Check if release already exists
         run: |
-          if git ls-remote --quiet --exit-code origin refs/heads/release-${{ inputs.releaseVersion }} >/dev/null 2>&1
+          if git ls-remote --quiet --exit-code origin "refs/heads/release-$RUNGHA_RELEASE_VERSION" >/dev/null 2>&1
           then
-            echo "Release ${{ inputs.releaseVersion }} already exists, patch will be perfomed"
+            echo "Release $RUNGHA_RELEASE_VERSION already exists, patch will be perfomed"
           else
-            echo "Release ${{ inputs.releaseVersion }} doesn't exist, patch cannot be performed"
+            echo "Release $RUNGHA_RELEASE_VERSION doesn't exist, patch cannot be performed"
             exit 1
           fi
+        env:
+          RUNGHA_RELEASE_VERSION: ${{ inputs.releaseVersion }} # just for defense against script injection
 
       - name: Checkout on existing release branch
-        run: git checkout release-${{ inputs.releaseVersion }}
+        run: git checkout "release-$RUNGHA_RELEASE_VERSION"
+        env:
+          RUNGHA_RELEASE_VERSION: ${{ inputs.releaseVersion }} # just for defense against script injection
 
       - name: Extract tag versions
         run: |
@@ -133,7 +143,9 @@ jobs:
 
       - name: Create New Version
         run: |
-          npm version ${{ env.RELEASE_VERSION }}
+          npm version "$RUNGHA_RELEASE_VERSION"
+        env:
+          RUNGHA_RELEASE_VERSION: ${{ inputs.releaseVersion }} # just for defense against script injection
 
       - name: Install Dependencies
         run: npm ci
@@ -163,5 +175,8 @@ jobs:
 
       - name: Push tag and release branch
         run: |
-          git push origin v${{ env.RELEASE_VERSION }}
-          git push origin release-${{ inputs.releaseVersion }}
+          git push origin "v$RUNGHA_ENV_RELEASE_VERSION"
+          git push origin "release-$RUNGHA_INPUT_RELEASE_VERSION"
+        env:
+          RUNGHA_INPUT_RELEASE_VERSION: ${{ inputs.releaseVersion }} # just for defense against script injection
+          RUNGHA_ENV_RELEASE_VERSION: ${{ env.RELEASE_VERSION }} # just for defense against script injection

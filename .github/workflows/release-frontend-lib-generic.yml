@@ -21,6 +21,8 @@ on:
       VERSIONBUMP_GHAPP_PRIVATE_KEY:
         required: true
 
+# Permissions needed for creating a github release (gh release create)
+# Note: Using broader write permissions as there's no more granular permission specifically for releases operations.
 permissions:
   contents: write
 
@@ -103,7 +105,7 @@ jobs:
         run: npm ci
 
       - name: Publish to NPM
-        run: npm publish --access=public
+        run: npm publish --access=public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ env.NODE_AUTH_TOKEN }}
 

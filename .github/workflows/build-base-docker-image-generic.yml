@@ -38,7 +38,7 @@ jobs:
       name: ${{ github.ref == 'refs/heads/main' && inputs.environment || '' }}
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v1
+        uses: actions/checkout@50fbc622fc4ef5163becd7fab6573eac35f8462e # v1 v1.2.0
 
       - name: Build and publish Docker image
         uses: elgohr/Publish-Docker-Github-Action@33a481be3e179353cb7793a92b57cf9a6c985860 # v4
@@ -51,7 +51,7 @@ jobs:
 
       - name: Broadcast update event
         if: github.ref == 'refs/heads/main'
-        uses: gridsuite/broadcast-event@main
+        uses: gridsuite/broadcast-event@67201bc793618876822097ce2152b23b496a8227 # main
         with:
           token: ${{ secrets.repo-token }}
           organizations: ${{ inputs.eventOrganizations }}

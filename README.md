@@ -13,3 +13,10 @@ Currently, the release/branching model differs between projects:
 * backend-app, frontend-app, base-docker-image: can release at a recent commit on main. Releasing creates a branch there and patch releases can be done on these release branches.
 * backend-lib: can release only the current tip of the main branch as a major or minor version. Patch releases can be done from release branches (needs admin right to create the release branch).
 * backend-app: can release only the current tip of the main branch as a major or minor or patch version.
+
+For release-frontend-lib, we require in the caller workflow
+```yaml
+permission:
+  contents: write # for creating github releases
+  id-token: write # for adding npm provenance
+```

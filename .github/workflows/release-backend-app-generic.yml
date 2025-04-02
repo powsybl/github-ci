@@ -141,7 +141,7 @@ jobs:
           # NOTE: needs fetch-depth: 0
           all_release_tags=$(git tag --list 'v[0-9]*')
           if [[ -z "$all_release_tags" ]]; then
-            echo "WARN no existing release tags found, is this the first release ?"
+            echo "WARN no existing release tags found, is this the first release?"
             if ! git_reference_parsed=$(git rev-parse "$RUNGHA_GIT_REFERENCE"); then
               echo "ERROR rev-parsing gitRef $RUNGHA_GIT_REFERENCE"
               exit 1

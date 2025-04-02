@@ -116,19 +116,21 @@ jobs:
       # There are no good workarounds to checkout a companion file (script or composite action)
       - name: Check if gitReference is missing already released commits
         run: |
-          # This ensures that we don't silently drop commits (such as security fixes) by
-          # rereleasing as new version an old commit that was already released. Another
-          # possibility is to use a non linear history and branch from an old commit
-          # and merge to the tip of main, but then release the new branched commit (which
-          # was not already rereleased, but which also doesn't contain the recent commits)
+          # The following block ensures that the new release will not omit
+          # commits that were already released. If this case was allowed, then
+          # it would for instance be possible to release a new version without
+          # some security fixes. For linear histories, this would happen when
+          # rereleasing an old commit as a new version. For non linear histories,
+          # this could additionally happen when releasing a new commit (subsequently
+          # merged in main) but that branches off of old commits (or even unrelated histories).
           # If the code that finds existing releases fails and doesn't find anything, it
           # could be the first release, or it could be that there is a bug or exploit. In
           # this case, instead of allowing to release anything, we just allow to release the
-          # tip of main (allowing to release anything would allow to drop commits).
+          # tip of main (allowing to release anything else would also allow to omit commits).
           # NOTE: needs fetch-depth: 0
           all_release_tags=$(git tag --list 'v[0-9]*')
           if [[ -z "$all_release_tags" ]]; then
-            echo "WARN no existing release tags found, is this the first release ?"
+            echo "WARN no existing release tags found, is this the first release?"
             if ! git_reference_parsed=$(git rev-parse "$RUNGHA_GIT_REFERENCE"); then
               echo "ERROR rev-parsing gitRef $RUNGHA_GIT_REFERENCE"
               exit 1

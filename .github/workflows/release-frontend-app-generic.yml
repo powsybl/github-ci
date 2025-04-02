@@ -119,6 +119,26 @@ jobs:
       # TODO deduplicate this code when github actions allows to easily share a script used
       # by reusable workflows. Currently only the workflow file is checked out at the caller
       # There are no good workarounds to checkout a companion file (script or composite action)
+      - name: Check if commitSha is merged in main
+        run: |
+          # needs fetch-depth: 0
+          # This ensures that only reviewed commits can be released because
+          # we require reviews and pull requests to allow to merge in main.
+          if ! main_contains=$(git branch -r --format='%(refname:short)' --contains "$RUNGHA_COMMIT_SHA" origin/main); then
+            echo "ERROR checking whether sha $RUNGHA_COMMIT_SHA is merged in main or not"
+            exit 1
+          elif [ -z "$main_contains" ]; then
+            echo "ERROR: sha $RUNGHA_COMMIT_SHA not merged in main"
+            exit 1
+          else
+            echo "sha $RUNGHA_COMMIT_SHA merged in main, release will be performed"
+          fi
+        env:
+          RUNGHA_COMMIT_SHA: ${{ inputs.commitSha }} # just for defense against script injection
+
+      # TODO deduplicate this code when github actions allows to easily share a script used
+      # by reusable workflows. Currently only the workflow file is checked out at the caller
+      # There are no good workarounds to checkout a companion file (script or composite action)
       - name: Check if commitSha is missing already released commits
         run: |
           # The following block ensures that the new release will not omit
@@ -158,26 +178,6 @@ jobs:
             else
               echo "gitRef $RUNGHA_COMMIT_SHA descends from previous releases, release will be performed"
             fi
-          fi
-        env:
-          RUNGHA_COMMIT_SHA: ${{ inputs.commitSha }} # just for defense against script injection
-
-      # TODO deduplicate this code when github actions allows to easily share a script used
-      # by reusable workflows. Currently only the workflow file is checked out at the caller
-      # There are no good workarounds to checkout a companion file (script or composite action)
-      - name: Check if commitSha is merged in main
-        run: |
-          # needs fetch-depth: 0
-          # This ensures that only reviewed commits can be released because
-          # we require reviews and pull requests to allow to merge in main.
-          if ! main_contains=$(git branch -r --format='%(refname:short)' --contains "$RUNGHA_COMMIT_SHA" origin/main); then
-            echo "ERROR checking whether sha $RUNGHA_COMMIT_SHA is merged in main or not"
-            exit 1
-          elif [ -z "$main_contains" ]; then
-            echo "ERROR: sha $RUNGHA_COMMIT_SHA not merged in main"
-            exit 1
-          else
-            echo "sha $RUNGHA_COMMIT_SHA merged in main, release will be performed"
           fi
         env:
           RUNGHA_COMMIT_SHA: ${{ inputs.commitSha }} # just for defense against script injection

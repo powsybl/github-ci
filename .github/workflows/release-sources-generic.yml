@@ -106,21 +106,45 @@ jobs:
       # TODO deduplicate this code when github actions allows to easily share a script used
       # by reusable workflows. Currently only the workflow file is checked out at the caller
       # There are no good workarounds to checkout a companion file (script or composite action)
-      - name: Check if gitReference is already released
+      - name: Check if gitReference is missing already released commits
         run: |
-          # needs fetch-depth: 0
-          # This ensures that an old commit (potentially with a security issue) can not be rereleased
-          # as a new version (thus potentially restoring a security issue). This will not block regular
-          # releases because there is always at least the version bump commit in a real new release even if
-          # we are just rereleasing the same code with a new name as part of a global release.
-          if ! release_tags=$(git tag --contains "$RUNGHA_GIT_REFERENCE" 'v[0-9]*'); then
-            echo "ERROR checking whether gitRef $RUNGHA_GIT_REFERENCE is already released or not."
-            exit 1
-          elif [ -n "$release_tags" ]; then
-            echo "ERROR: gitRef $RUNGHA_GIT_REFERENCE already released: $release_tags"
-            exit 1
+          # The following block ensures that the new release will not omit
+          # commits that were already released. If this case was allowed, then
+          # it would for instance be possible to release a new version without
+          # some security fixes. For linear histories, this would happen when
+          # rereleasing an old commit as a new version. For non linear histories,
+          # this could additionally happen when releasing a new commit (subsequently
+          # merged in main) but that branches off of old commits (or even unrelated histories).
+          # If the code that finds existing releases fails and doesn't find anything, it
+          # could be the first release, or it could be that there is a bug or exploit. In
+          # this case, instead of allowing to release anything, we just allow to release the
+          # tip of main (allowing to release anything else would also allow to omit commits).
+          # NOTE: needs fetch-depth: 0
+          all_release_tags=$(git tag --list 'v[0-9]*')
+          if [[ -z "$all_release_tags" ]]; then
+            echo "WARN no existing release tags found, is this the first release?"
+            if ! git_reference_parsed=$(git rev-parse "$RUNGHA_GIT_REFERENCE"); then
+              echo "ERROR rev-parsing gitRef $RUNGHA_GIT_REFERENCE"
+              exit 1
+            fi
+            if ! main_parsed=$(git rev-parse origin/main); then
+              echo "ERROR rev-parsing origin/main"
+              exit 1
+            fi
+            if [[ -n "$git_reference_parsed" && "$git_reference_parsed" != "$main_parsed" ]]; then
+              echo "ERROR: No existing release found, must release the tip of main $main_parsed but got $git_reference_parsed"
+              exit 1
+            else
+              echo "gitRef $RUNGHA_GIT_REFERENCE is tip of main, release will be performed"
+            fi
           else
-            echo "gitRef $RUNGHA_GIT_REFERENCE never released, release will be performed"
+            latest_main_release=$(git merge-base main $all_release_tags)
+            if ! git merge-base --is-ancestor "$latest_main_release" "$RUNGHA_GIT_REFERENCE"; then
+              echo "ERROR gitRef $RUNGHA_GIT_REFERENCE is not a descendant of the latest released commit $latest_main_release"
+              exit 1
+            else
+              echo "gitRef $RUNGHA_GIT_REFERENCE descends from previous releases, release will be performed"
+            fi
           fi
         env:
           RUNGHA_GIT_REFERENCE: ${{ inputs.gitReference }} # just for defense against script injection

@@ -137,7 +137,7 @@ jobs:
           # If the code that finds existing releases fails and doesn't find anything, it
           # could be the first release, or it could be that there is a bug or exploit. In
           # this case, instead of allowing to release anything, we just allow to release the
-          # tip of main (allowing to release anything would allow to drop commits).
+          # tip of main (allowing to release anything else would allow to drop commits).
           # NOTE: needs fetch-depth: 0
           all_release_tags=$(git tag --list 'v[0-9]*')
           if [[ -z "$all_release_tags" ]]; then

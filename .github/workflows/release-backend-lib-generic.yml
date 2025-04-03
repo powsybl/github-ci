@@ -131,14 +131,13 @@ jobs:
           RUNGHA_RELEASE_VERSION: ${{ steps.versions.outputs.RELEASE_VERSION }} # just for defense against script injection
 
       - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           gh release create "v$RUNGHA_RELEASE_VERSION" \
             --title "v$RUNGHA_RELEASE_VERSION" \
             --generate-notes
         env:
           RUNGHA_RELEASE_VERSION: ${{ steps.versions.outputs.RELEASE_VERSION }} # just for defense against script injection
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
       - name: Set next development version
         run: |

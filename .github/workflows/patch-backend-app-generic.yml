@@ -152,11 +152,9 @@ jobs:
           RUNGHA_GITHUB_SHORT_VERSION: ${{ env.GITHUB_SHORT_VERSION }} # just for defense against script injection
 
       - name: Build with Maven
-        run: mvn --batch-mode -Pjacoco verify
-
-      - name: Run SonarCloud analysis
         run: >
-          mvn --batch-mode -DskipTests sonar:sonar
+          mvn --batch-mode -Pjacoco verify
+          org.sonarsource.scanner.maven:sonar-maven-plugin:sonar
           -Dsonar.host.url=https://sonarcloud.io
         env:
           SONAR_TOKEN: ${{ secrets.sonar-token }}

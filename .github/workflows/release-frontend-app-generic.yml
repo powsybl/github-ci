@@ -219,11 +219,13 @@ jobs:
           message: ${{ format('{0}', env.RELEASE_VERSION) }}
           ref: ${{ env.TMPRELEASEBRANCH }}
 
-      - name: Cleanup remote tmp branch
+      - name: Create local tag and cleanup remote tmp branch
         run: |
           git push origin ":$RUNGHA_TMPRELEASEBRANCH"
+          git tag "v$RUNGHA_RELEASE_VERSION"
         env:
           RUNGHA_TMPRELEASEBRANCH: ${{ env.TMPRELEASEBRANCH }} # just for defense against script injection
+          RUNGHA_RELEASE_VERSION: ${{ env.RELEASE_VERSION }} # just for defense against script injection
 
       - name: Install Dependencies
         run: npm ci

@@ -195,7 +195,7 @@ jobs:
           # can't be protected because the github commit API doesn't allow to create a commit on
           # protected branch even though we have bypass rights for the token of the app
           TMPRELEASEBRANCH="copy-${TMPRANDOM}-release-v${RUNGHA_GITHUB_MAJOR_VERSION}.${RUNGHA_GITHUB_MINOR_VERSION}"
-          git push origin "$RUNGHA_GIT_REFERENCE:$TMPRELEASEBRANCH"
+          git push origin "release-v${RUNGHA_GITHUB_MAJOR_VERSION}.${RUNGHA_GITHUB_MINOR_VERSION}:$TMPRELEASEBRANCH"
           echo "TMPRELEASEBRANCH=$TMPRELEASEBRANCH" >> $GITHUB_ENV
         env:
           RUNGHA_GITHUB_MAJOR_VERSION: ${{ env.GITHUB_MAJOR_VERSION }} # just for defense against script injection

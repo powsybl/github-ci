@@ -156,9 +156,9 @@ jobs:
       - name: Create New Version
         run: |
           # Use npm version to update version, don't create commit and tag
-          npm version --no-git-tag-version "$RUNGHA_RELEASE_VERSION"
+          npm version --no-git-tag-version "$RUNGHA_ENV_RELEASE_VERSION"
         env:
-          RUNGHA_RELEASE_VERSION: ${{ inputs.releaseVersion }} # just for defense against script injection
+          RUNGHA_ENV_RELEASE_VERSION: ${{ env.RELEASE_VERSION }} # just for defense against script injection
 
       # creates a signed commit on the tmp remote branch with our diff, and
       # then updates (fast-forward) our local branch to this new commit. It
@@ -169,16 +169,16 @@ jobs:
         with:
           token: ${{ steps.app-token.outputs.token }}
           files: "**"
-          message: ${{ format('{0}', inputs.releaseVersion) }}
+          message: ${{ format('{0}', env.RELEASE_VERSION) }}
           ref: ${{ env.TMPRELEASEBRANCH }}
 
       - name: Create local tag and cleanup remote tmp branch
         run: |
           git push origin ":$RUNGHA_TMPRELEASEBRANCH"
-          git tag "v$RUNGHA_RELEASE_VERSION"
+          git tag "v$RUNGHA_ENV_RELEASE_VERSION"
         env:
           RUNGHA_TMPRELEASEBRANCH: ${{ env.TMPRELEASEBRANCH }} # just for defense against script injection
-          RUNGHA_RELEASE_VERSION: ${{ inputs.releaseVersion }} # just for defense against script injection
+          RUNGHA_ENV_RELEASE_VERSION: ${{ env.RELEASE_VERSION }} # just for defense against script injection
 
       - name: Install Dependencies
         run: npm ci

@@ -143,9 +143,9 @@ jobs:
 
       - name: Create New Version
         run: |
-          npm version "$RUNGHA_RELEASE_VERSION"
+          npm version "$RUNGHA_ENV_RELEASE_VERSION"
         env:
-          RUNGHA_RELEASE_VERSION: ${{ inputs.releaseVersion }} # just for defense against script injection
+          RUNGHA_ENV_RELEASE_VERSION: ${{ env.RELEASE_VERSION }} # just for defense against script injection
 
       - name: Install Dependencies
         run: npm ci

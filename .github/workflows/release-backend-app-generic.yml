@@ -316,7 +316,7 @@ jobs:
         with:
           token: ${{ steps.app-token.outputs.token }}
           files: "**"
-          message: ${{ format('Update SNAPSHOT version to v{0}.v{1}.0', env.GITHUB_MAJOR_VERSION, env.MAIN_MINOR) }}
+          message: ${{ format('Update SNAPSHOT version to v{0}.{1}.0', env.GITHUB_MAJOR_VERSION, env.MAIN_MINOR) }}
           ref: ${{ env.TMPMAINBRANCH }}
 
       - name: push to main and cleanup remote tmp branch

@@ -119,7 +119,7 @@ jobs:
         env:
           RUNGHA_VERSION_TYPE: ${{ inputs.versionType }} # just for defense against script injection
 
-      - name: Set release version
+      - name: Push tmp branch for signed commit, set release version
         run: |
           TMPRANDOM="$(printf "%04x" $RANDOM)$(printf "%04x" $RANDOM)$(printf "%04x" $RANDOM)"
           # random prefix so that it's not protected, but keep release information to give context

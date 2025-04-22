@@ -111,7 +111,7 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
 
-      - name: Version and Release
+      - name: Version and Release, push tmp branch for signed commit
         run: |
           # Use npm version to update version, don't create commit and tag, get version output vX.Y.Z
           RELEASE_V_VERSION=$(npm version --no-git-tag-version "$RUNGHA_VERSION_TYPE")

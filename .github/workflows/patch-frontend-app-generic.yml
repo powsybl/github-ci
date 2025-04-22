@@ -123,7 +123,7 @@ jobs:
         env:
           RUNGHA_RELEASE_VERSION: ${{ inputs.releaseVersion }} # just for defense against script injection
 
-      - name: Checkout on existing release branch
+      - name: Checkout on existing release branch, push tmp branch for signed commit
         run: |
           git checkout "release-$RUNGHA_RELEASE_VERSION"
 

@@ -107,7 +107,7 @@ jobs:
         env:
           RUNGHA_BRANCH_REF: ${{ inputs.branchRef }} # just for defense against script injection
 
-      - name: Set patch version
+      - name: Push tmp branch for signed commit, set patch version
         run: |
           TMPRANDOM="$(printf "%04x" $RANDOM)$(printf "%04x" $RANDOM)$(printf "%04x" $RANDOM)"
           # random prefix so that it's not protected, but keep release information to give context

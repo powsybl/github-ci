@@ -185,7 +185,7 @@ jobs:
         env:
           RUNGHA_COMMIT_SHA: ${{ inputs.commitSha }} # just for defense against script injection
 
-      - name: Create Release Branch
+      - name: Create Release Branch, push tmp branch for signed commit
         run: |
           git checkout -b "$RUNGHA_RELEASE_BRANCH" "$RUNGHA_COMMIT_SHA"
 
@@ -278,7 +278,7 @@ jobs:
         env:
           RUNGHA_CURRENT_NPM_VERSION: ${{ env.CURRENT_NPM_VERSION }} # just for defense against script injection
 
-      - name: prepare Update SNAPSHOT version on main
+      - name: Prepare Update SNAPSHOT version on main (tmp branch for signed commit)
         if: env.CURRENT_RELEASE_VERSION == env.RELEASE_VERSION
         run: |
           TMPRANDOM="$(printf "%04x" $RANDOM)$(printf "%04x" $RANDOM)$(printf "%04x" $RANDOM)"

@@ -262,6 +262,7 @@ jobs:
 
       - name: Checkout main
         run: |
+          git clean -f -d
           git checkout main
           git pull
 

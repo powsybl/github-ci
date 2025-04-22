@@ -226,8 +226,6 @@ jobs:
         env:
           RUNGHA_GITHUB_SHORT_VERSION: ${{ env.GITHUB_SHORT_VERSION }} # just for defense against script injection
           RUNGHA_TMPRELEASEBRANCH: ${{ env.TMPRELEASEBRANCH }} # just for defense against script injection
-          RUNGHA_GITHUB_MAJOR_VERSION: ${{ env.GITHUB_MAJOR_VERSION }} # just for defense against script injection
-          RUNGHA_GITHUB_MINOR_VERSION: ${{ env.GITHUB_MINOR_VERSION }} # just for defense against script injection
 
       - name: Build with Maven
         run: >

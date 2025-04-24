@@ -136,14 +136,13 @@ jobs:
 
       - name: Create and push tag and cleanup remote tmp branch
         run: |
-          git push origin ":$RUNGHA_TMPRELEASEBRANCH"
+          git push origin ":$TMPRELEASEBRANCH"
           git tag "v$RUNGHA_PATCH_VERSION"
           git push origin "v$RUNGHA_PATCH_VERSION"
           git push origin "$RUNGHA_BRANCH_REF"
         env:
           RUNGHA_PATCH_VERSION: ${{ steps.versions.outputs.PATCH_VERSION }} # just for defense against script injection
           RUNGHA_BRANCH_REF: ${{ inputs.branchRef }} # just for defense against script injection
-          RUNGHA_TMPRELEASEBRANCH: ${{ env.TMPRELEASEBRANCH }} # just for defense against script injection
 
       - name: Create GitHub Release
         env:

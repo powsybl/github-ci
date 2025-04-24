@@ -133,9 +133,7 @@ jobs:
 
       - name: Create tag
         run: |
-          git tag "v$RUNGHA_GITHUB_SHORT_VERSION"
-        env:
-          RUNGHA_GITHUB_SHORT_VERSION: ${{ env.GITHUB_SHORT_VERSION }} # just for defense against script injection
+          git tag "v$GITHUB_SHORT_VERSION"
 
       - name: Build and publish Docker image
         uses: elgohr/Publish-Docker-Github-Action@33a481be3e179353cb7793a92b57cf9a6c985860 # v4
@@ -147,6 +145,4 @@ jobs:
 
       - name: Push release branch and tag
         run: |
-          git push origin "v$RUNGHA_GITHUB_SHORT_VERSION"
-        env:
-          RUNGHA_GITHUB_SHORT_VERSION: ${{ env.GITHUB_SHORT_VERSION }} # just for defense against script injection
+          git push origin "v$GITHUB_SHORT_VERSION"

@@ -183,7 +183,5 @@ jobs:
 
       - name: push to main and cleanup remote tmp branch
         run: |
-          git push origin ":${RUNGHA_TMPMAINBRANCH}"
+          git push origin ":${TMPMAINBRANCH}"
           git push origin main
-        env:
-          RUNGHA_TMPMAINBRANCH: ${{ env.TMPMAINBRANCH }} # just for defense against script injection

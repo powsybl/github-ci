@@ -171,23 +171,15 @@ jobs:
 
       - name: Checkout with new branch
         run: |
-          git checkout -b "release-v${RUNGHA_GITHUB_MAJOR_VERSION}.${RUNGHA_GITHUB_MINOR_VERSION}" "$RUNGHA_GIT_REFERENCE"
+          git checkout -b "release-v${GITHUB_MAJOR_VERSION}.${GITHUB_MINOR_VERSION}" "$RUNGHA_GIT_REFERENCE"
         env:
-          RUNGHA_GITHUB_MAJOR_VERSION: ${{ env.GITHUB_MAJOR_VERSION }} # just for defense against script injection
-          RUNGHA_GITHUB_MINOR_VERSION: ${{ env.GITHUB_MINOR_VERSION }} # just for defense against script injection
           RUNGHA_GIT_REFERENCE: ${{ inputs.gitReference }} # just for defense against script injection
 
       - name: Create tag
         run: |
-          git tag "v$RUNGHA_GITHUB_SHORT_VERSION"
-        env:
-          RUNGHA_GITHUB_SHORT_VERSION: ${{ env.GITHUB_SHORT_VERSION }} # just for defense against script injection
+          git tag "v$GITHUB_SHORT_VERSION"
 
       - name: Push release branch and tag
         run: |
-          git push origin "release-v${RUNGHA_GITHUB_MAJOR_VERSION}.${RUNGHA_GITHUB_MINOR_VERSION}"
-          git push origin "v$RUNGHA_GITHUB_SHORT_VERSION"
-        env:
-          RUNGHA_GITHUB_MAJOR_VERSION: ${{ env.GITHUB_MAJOR_VERSION }} # just for defense against script injection
-          RUNGHA_GITHUB_MINOR_VERSION: ${{ env.GITHUB_MINOR_VERSION }} # just for defense against script injection
-          RUNGHA_GITHUB_SHORT_VERSION: ${{ env.GITHUB_SHORT_VERSION }} # just for defense against script injection
+          git push origin "release-v${GITHUB_MAJOR_VERSION}.${GITHUB_MINOR_VERSION}"
+          git push origin "v$GITHUB_SHORT_VERSION"

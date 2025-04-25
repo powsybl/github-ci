@@ -281,7 +281,7 @@ jobs:
         run: |
           minor=$GITHUB_MINOR_VERSION 
           ((++minor))
-          mvn --batch-mode versions:set -DgenerateBackupPoms=false -DnewVersion=$GITHUB_MAJOR_VERSION.$minor.0-SNAPSHOT
+          mvn --batch-mode versions:set -DgenerateBackupPoms=false -DnewVersion="$GITHUB_MAJOR_VERSION.$minor.0-SNAPSHOT"
           echo "MAIN_MINOR=$minor" >> $GITHUB_ENV
 
       # creates a signed commit on the tmp remote branch with our diff, and

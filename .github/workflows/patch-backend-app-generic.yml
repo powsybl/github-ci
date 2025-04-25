@@ -149,9 +149,7 @@ jobs:
           fi
 
       - name: Change Maven version to release version
-        run: mvn --batch-mode versions:set -DgenerateBackupPoms=false -DnewVersion="$RUNGHA_GITHUB_SHORT_VERSION"
-        env:
-          RUNGHA_GITHUB_SHORT_VERSION: ${{ env.GITHUB_SHORT_VERSION }} # just for defense against script injection
+        run: mvn --batch-mode versions:set -DgenerateBackupPoms=false -DnewVersion="$GITHUB_SHORT_VERSION"
 
       # creates a signed commit on the tmp remote branch with our diff, and
       # then updates (fast-forward) our local branch to this new commit. It
@@ -167,11 +165,8 @@ jobs:
 
       - name: Create local tag and cleanup remote tmp branch
         run: |
-          git push origin ":${RUNGHA_TMPRELEASEBRANCH}"
-          git tag "v$RUNGHA_GITHUB_SHORT_VERSION"
-        env:
-          RUNGHA_TMPRELEASEBRANCH: ${{ env.TMPRELEASEBRANCH }} # just for defense against script injection
-          RUNGHA_GITHUB_SHORT_VERSION: ${{ env.GITHUB_SHORT_VERSION }} # just for defense against script injection
+          git push origin ":${TMPRELEASEBRANCH}"
+          git tag "v$GITHUB_SHORT_VERSION"
 
       - name: Build with Maven
         run: >
@@ -187,20 +182,15 @@ jobs:
         run: >
           mvn --batch-mode deploy -DskipTests -Dmaven.install.skip -Dmaven.deploy.skip -Dpowsybl.docker.deploy
           -Djib.httpTimeout=60000
-          -Djib.to.image="$RUNGHA_DOCKER_IMAGE:$RUNGHA_GITHUB_SHORT_VERSION"
+          -Djib.to.image="$RUNGHA_DOCKER_IMAGE:$GITHUB_SHORT_VERSION"
           -Djib.to.auth.username="$RUNGHA_DOCKER_USERNAME"
           -Djib.to.auth.password="$RUNGHA_DOCKERHUB_TOKEN"
         env:
           RUNGHA_DOCKER_IMAGE: ${{ inputs.dockerImage }} # just for defense against script injection
           RUNGHA_DOCKER_USERNAME: ${{ inputs.dockerUsername }} # just for defense against script injection
           RUNGHA_DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }} # just for defense against script injection
-          RUNGHA_GITHUB_SHORT_VERSION: ${{ env.GITHUB_SHORT_VERSION }} # just for defense against script injection
 
       - name: Push release branch and tag
         run: |
-          git push origin "release-v${RUNGHA_GITHUB_MAJOR_VERSION}.${RUNGHA_GITHUB_MINOR_VERSION}"
-          git push origin "v$RUNGHA_GITHUB_SHORT_VERSION"
-        env:
-          RUNGHA_GITHUB_MAJOR_VERSION: ${{ env.GITHUB_MAJOR_VERSION }} # just for defense against script injection
-          RUNGHA_GITHUB_MINOR_VERSION: ${{ env.GITHUB_MINOR_VERSION }} # just for defense against script injection
-          RUNGHA_GITHUB_SHORT_VERSION: ${{ env.GITHUB_SHORT_VERSION }} # just for defense against script injection
+          git push origin "release-v${GITHUB_MAJOR_VERSION}.${GITHUB_MINOR_VERSION}"
+          git push origin "v$GITHUB_SHORT_VERSION"

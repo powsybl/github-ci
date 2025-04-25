@@ -141,13 +141,10 @@ jobs:
 
       - name: push to main and cleanup remote tmp branch
         run: |
-          git push origin ":${RUNGHA_TMPMAINBRANCH}"
+          git push origin ":${TMPMAINBRANCH}"
           git push origin main
-          git tag "v$RUNGHA_RELEASE_VERSION" main
-          git push origin "v$RUNGHA_RELEASE_VERSION"
-        env:
-          RUNGHA_TMPMAINBRANCH: ${{ env.TMPMAINBRANCH }} # just for defense against script injection
-          RUNGHA_RELEASE_VERSION: ${{ env.RELEASE_VERSION }} # just for defense against script injection
+          git tag "v$RELEASE_VERSION" main
+          git push origin "v$RELEASE_VERSION"
 
       - name: Install Dependencies
         run: npm ci

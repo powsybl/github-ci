@@ -187,25 +187,22 @@ jobs:
 
       - name: Create Release Branch, push tmp branch for signed commit
         run: |
-          git checkout -b "$RUNGHA_RELEASE_BRANCH" "$RUNGHA_COMMIT_SHA"
+          git checkout -b "$RELEASE_BRANCH" "$RUNGHA_COMMIT_SHA"
 
           TMPRANDOM="$(printf "%04x" $RANDOM)$(printf "%04x" $RANDOM)$(printf "%04x" $RANDOM)"
           # random prefix so that it's not protected, but keep release information to give context
           # can't be protected because the github commit API doesn't allow to create a commit on
           # protected branch even though we have bypass rights for the token of the app
-          TMPRELEASEBRANCH="copy-${TMPRANDOM}-${RUNGHA_RELEASE_BRANCH}"
-          git push origin "$RUNGHA_RELEASE_BRANCH:$TMPRELEASEBRANCH"
+          TMPRELEASEBRANCH="copy-${TMPRANDOM}-${RELEASE_BRANCH}"
+          git push origin "$RELEASE_BRANCH:$TMPRELEASEBRANCH"
           echo "TMPRELEASEBRANCH=$TMPRELEASEBRANCH" >> $GITHUB_ENV
         env:
-          RUNGHA_RELEASE_BRANCH: ${{ env.RELEASE_BRANCH }} # just for defense against script injection
           RUNGHA_COMMIT_SHA: ${{ inputs.commitSha }} # just for defense against script injection
 
       - name: Update Version and Tag
         run: |
           # Use npm version to update version, don't create commit and tag
-          npm version --no-git-tag-version "$RUNGHA_RELEASE_VERSION"
-        env:
-          RUNGHA_RELEASE_VERSION: ${{ env.RELEASE_VERSION }} # just for defense against script injection
+          npm version --no-git-tag-version "$RELEASE_VERSION"
 
       # creates a signed commit on the tmp remote branch with our diff, and
       # then updates (fast-forward) our local branch to this new commit. It
@@ -221,11 +218,8 @@ jobs:
 
       - name: Create local tag and cleanup remote tmp branch
         run: |
-          git push origin ":$RUNGHA_TMPRELEASEBRANCH"
-          git tag "v$RUNGHA_RELEASE_VERSION"
-        env:
-          RUNGHA_TMPRELEASEBRANCH: ${{ env.TMPRELEASEBRANCH }} # just for defense against script injection
-          RUNGHA_RELEASE_VERSION: ${{ env.RELEASE_VERSION }} # just for defense against script injection
+          git push origin ":$TMPRELEASEBRANCH"
+          git tag "v$RELEASE_VERSION"
 
       - name: Install Dependencies
         run: npm ci
@@ -254,11 +248,8 @@ jobs:
 
       - name: Push release branch and tag
         run: |
-          git push origin "$RUNGHA_RELEASE_BRANCH"
-          git push origin "v$RUNGHA_RELEASE_VERSION"
-        env:
-          RUNGHA_RELEASE_BRANCH: ${{ env.RELEASE_BRANCH }} # just for defense against script injection
-          RUNGHA_RELEASE_VERSION: ${{ env.RELEASE_VERSION }} # just for defense against script injection
+          git push origin "$RELEASE_BRANCH"
+          git push origin "v$RELEASE_VERSION"
 
       - name: Checkout main
         run: |
@@ -272,12 +263,10 @@ jobs:
       - name: Extract current version
         run: |
           regex="(.*)-SNAPSHOT"
-          if [[ $RUNGHA_CURRENT_NPM_VERSION =~ $regex ]];
+          if [[ $CURRENT_NPM_VERSION =~ $regex ]];
           then
             echo "CURRENT_RELEASE_VERSION=${BASH_REMATCH[1]}" >> $GITHUB_ENV
           fi
-        env:
-          RUNGHA_CURRENT_NPM_VERSION: ${{ env.CURRENT_NPM_VERSION }} # just for defense against script injection
 
       - name: Prepare Update SNAPSHOT version on main (tmp branch for signed commit)
         if: env.CURRENT_RELEASE_VERSION == env.RELEASE_VERSION
@@ -286,11 +275,9 @@ jobs:
           # random prefix so that it's not protected, but keep release information to give context
           # can't be protected because the github commit API doesn't allow to create a commit on
           # protected branch even though we have bypass rights for the token of the app
-          TMPMAINBRANCH="copy-${TMPRANDOM}-main-${RUNGHA_RELEASE_BRANCH}"
+          TMPMAINBRANCH="copy-${TMPRANDOM}-main-${RELEASE_BRANCH}"
           git push origin "main:$TMPMAINBRANCH"
           echo "TMPMAINBRANCH=$TMPMAINBRANCH" >> $GITHUB_ENV
-        env:
-          RUNGHA_RELEASE_BRANCH: ${{ env.RELEASE_BRANCH }} # just for defense against script injection
 
       - name: Update SNAPSHOT version on main
         if: env.CURRENT_RELEASE_VERSION == env.RELEASE_VERSION
@@ -320,7 +307,5 @@ jobs:
       - name: push to main and cleanup remote tmp branch
         if: env.CURRENT_RELEASE_VERSION == env.RELEASE_VERSION
         run: |
-          git push origin ":${RUNGHA_TMPMAINBRANCH}"
+          git push origin ":${TMPMAINBRANCH}"
           git push origin main
-        env:
-          RUNGHA_TMPMAINBRANCH: ${{ env.TMPMAINBRANCH }} # just for defense against script injection

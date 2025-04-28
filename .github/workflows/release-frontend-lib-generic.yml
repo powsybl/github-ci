@@ -111,6 +111,32 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
 
+      - name: check npm publish rights
+        run: |
+          NPMUSER=$(npm whoami)
+          # NOTE: when using --json, the [[<user>]] arg is ignored and all users are returned (npm 10.9.2)
+          # it's still better to use json than parsing human readable data which may change and to guard
+          # against a user with a weird username like having a colon or whitespace or even "read-write" in its name.
+          # Example invocations:
+          #   $ npm access list collaborators mypackage myuser
+          #   myuser: read-write
+          # vs
+          #   $ npm access list collaborators mypackage myuser --json
+          #   {
+          #     "otheruser": "read-write",
+          #     "myuser": "read-write"
+          #   }
+          # NOTE: need to correctly pass the username as data to the jq script to avoid injections
+          # NOTE: this fails with automation tokens, but works without any auth! hence --userconfig /dev/null
+          NPMACCESS=$(npm --userconfig /dev/null access list collaborators --json | jq -r --arg NPMUSER "$NPMUSER" '.[$NPMUSER]')
+          # As per the docs, "Access is either read-write or read-only."
+          # only proceed if everything goes perfectly and we have read-write
+          # NOTE: If npm ever adds more roles like "admin" which should rightfully be
+          # allowed to release, we will have to revisit this, maybe they will
+          # provide a boolean map of permissions instead of just an access name
+          # like github for the actor permission?
+          [[ "$NPMACCESS" == "read-write" ]] || exit 1
+
       - name: Version and Release, push tmp branch for signed commit
         run: |
           # Use npm version to update version, don't create commit and tag, get version output vX.Y.Z

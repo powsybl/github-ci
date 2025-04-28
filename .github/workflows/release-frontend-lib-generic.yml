@@ -137,6 +137,48 @@ jobs:
           # like github for the actor permission?
           [[ "$NPMACCESS" == "read-write" ]] || exit 1
 
+      - name: check npm token type automation
+        run: |
+          # NOTE: we can't implement a fully dependable check here, see below.
+          # currently (but it may change in the future I guess), npm token lists fails with automation tokens:
+          #  $ npm token list --json
+          #    npm error code E403
+          #    npm error 403 403 Forbidden - GET https://registry.npmjs.org/-/npm/v1/tokens
+          #  $ echo $?
+          #    1
+          # An error exit code may mean a bad token or a valid automation token, it can never be fully dependable.
+          if tokens_json=$(npm token list --json); then
+            # The api call suceeded, but the only way to get a token id ('key')
+            # is at the creation of the token. After that, we can only match
+            # with a small prefix to identify the token so we do a best effort
+            # not fully dependable check just to catch mistakes: we should
+            # match at least one automation token. The API return value is
+            # something like:
+            #  [{
+            #    "cidr_whitelist": null,
+            #    "readonly": false,
+            #    "automation": false,
+            #    "created": "2025-04-28T11:00:10.814Z",
+            #    "updated": "2025-04-28T11:00:10.814Z",
+            #    "key": "d8005eXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX5bf74539",
+            #    "token": "npm_KL"
+            #  },
+            #  {
+            #    "cidr_whitelist": null,
+            #    "readonly": false,
+            #    "automation": true,
+            #    "created": "2025-04-28T10:36:53.207Z",
+            #    "updated": "2025-04-28T10:36:53.207Z",
+            #    "key": "6a267cXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXc7275c4",
+            #    "token": "npm_b8"
+            #  }]
+            # From now exit on any error, or if there are no automation tokens with a matching prefix.
+            if ! echo "$tokens_json" | jq -r --arg NODE_AUTH_TOKEN $NODE_AUTH_TOKEN '.[] | select(.token | inside($NODE_AUTH_TOKEN)) | .automation' | grep "^true$"; then
+              echo "No matching automation token found, release would fail because of required 2FA, please use an automation token."
+              exit 1
+            fi
+          fi
+
       - name: Version and Release, push tmp branch for signed commit
         run: |
           # Use npm version to update version, don't create commit and tag, get version output vX.Y.Z

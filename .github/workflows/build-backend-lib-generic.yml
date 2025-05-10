@@ -26,6 +26,17 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@50fbc622fc4ef5163becd7fab6573eac35f8462e # v1 v1.2.0
 
+      - name: Check for tracked ignored files
+        run: |
+          FILES=$(git ls-files -i --exclude-standard)
+          if [[ -n "$FILES" ]]; then
+            echo "❌ The following tracked files should be ignored:"
+            echo "$FILES"
+            exit 1
+          else
+            echo "✅ No tracked ignored files found."
+          fi
+
       - name: Build with Maven
         run: >
           mvn --batch-mode -Pjacoco verify

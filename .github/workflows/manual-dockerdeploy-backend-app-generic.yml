@@ -1,0 +1,87 @@
+on:
+  workflow_call:
+    inputs:
+      dockerImage:
+        required: true
+        type: string
+      dockerUsername:
+        required: true
+        type: string
+      environment:
+        required: false
+        default: 'release'
+        type: string
+    secrets:
+      DOCKERHUB_TOKEN:
+        required: true
+
+jobs:
+  release:
+    environment:
+      name: ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    steps:
+      # don't allow to disable this check, and for security only succeed if everything goes perfectly and outputs "true"
+      # TODO deduplicate this code when github actions allows to easily share a script used
+      # by reusable workflows. Currently only the workflow file is checked out at the caller
+      # There are no good workarounds to checkout a companion file (script or composite action)
+      - name: Check Actor Permission
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "checking permission=maintain on repo=$GITHUB_REPOSITORY for user=$GITHUB_ACTOR"
+          # no need to escape GITHUB_REPOSITORY and GITHUB_ACTOR because github
+          # names can only contain ASCII letters, digits, and the characters ., # -, and _.
+          # permission: legacy, is actually a role (one per user) and doesn't
+          #   have "maintain" role, only ["none", "read", "write", "admin"]
+          # role_name: one per user, new standard roles, custom roles, "" and
+          #   "push" and "pull" instead of "none" and "read" and "write": "",
+          #   "read", "triage", "write", "maintain", "admin" and also non
+          #   standard custom roles
+          # user.permissions: boolean status only for each standard permissions "pull", "triage", "push", "maintain", "admin"
+          # So the best for now is to use user.permissions I think.
+          # NOTE: the gh api returns a JSON boolean so jq can only output true or false without quotes
+          # (actually even for JSON strings gh's gojq implementation strips the quotes by default unlike jq)
+          allowed=$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$GITHUB_ACTOR/permission" --jq '.user.permissions["maintain"]')
+          [[ "$allowed" == "true" ]] || exit 1
+
+      - name: Ensure running on release tag
+        run: |
+          regex="refs/tags/v([0-9].*)"
+          if [[ "$GITHUB_REF" =~ $regex ]]; then
+            CURRENT_TAG_VERSION="${BASH_REMATCH[1]}"
+          else
+            echo "ERROR: the workflow must be run on a release tag "$regex", got: $GITHUB_REF"
+            exit 1
+          fi
+          echo "CURRENT_TAG_VERSION=${CURRENT_TAG_VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Checkout sources
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4 v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@b6e674f4b717d7b0ae3baee0fbe79f498905dfde # v1 v1.4.4
+        with:
+          java-version: 21
+
+      - name: Check maven version is tag version
+        run: |
+          CURRENT_MAVEN_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)"
+          if [[ "$CURRENT_MAVEN_VERSION" != "$CURRENT_TAG_VERSION" ]]; then
+            echo "tag version doesn't match maven version. tag: $CURRENT_TAG_VERSION, maven: $CURRENT_MAVEN_VERSION"
+            exit 1
+          fi
+
+      - name: Build Docker image
+        run: >
+          mvn --batch-mode deploy -DskipTests -Dmaven.install.skip -Dmaven.deploy.skip -Dpowsybl.docker.deploy
+          -Djib.httpTimeout=60000
+          -Djib.to.image="$RUNGHA_DOCKER_IMAGE:$CURRENT_TAG_VERSION"
+          -Djib.to.auth.username="$RUNGHA_DOCKER_USERNAME"
+          -Djib.to.auth.password="$RUNGHA_DOCKERHUB_TOKEN"
+        env:
+          RUNGHA_DOCKER_IMAGE: ${{ inputs.dockerImage }} # just for defense against script injection
+          RUNGHA_DOCKER_USERNAME: ${{ inputs.dockerUsername }} # just for defense against script injection
+          RUNGHA_DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }} # just for defense against script injection

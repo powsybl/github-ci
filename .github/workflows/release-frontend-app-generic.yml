@@ -116,6 +116,7 @@ jobs:
           echo "RELEASE_MINOR_VERSION=${MINOR}" >> $GITHUB_ENV
           echo "RELEASE_VERSION=${MAJOR}.${MINOR}.0" >> $GITHUB_ENV
           echo "RELEASE_BRANCH=release-v${MAJOR}.${MINOR}" >> $GITHUB_ENV
+          echo "BASE_TAG=base-v${MAJOR}.${MINOR}" >> $GITHUB_ENV
         env:
           RUNGHA_RELEASE_VERSION: ${{ inputs.releaseVersion }} # just for defense against script injection
 
@@ -188,6 +189,7 @@ jobs:
       - name: Create Release Branch, push tmp branch for signed commit
         run: |
           git checkout -b "$RELEASE_BRANCH" "$RUNGHA_COMMIT_SHA"
+          git tag "$BASE_TAG"
 
           TMPRANDOM="$(printf "%04x" $RANDOM)$(printf "%04x" $RANDOM)$(printf "%04x" $RANDOM)"
           # random prefix so that it's not protected, but keep release information to give context
@@ -249,7 +251,7 @@ jobs:
       - name: Push release branch and tag
         run: |
           git push origin "$RELEASE_BRANCH"
-          git push origin "v$RELEASE_VERSION"
+          git push origin "v$RELEASE_VERSION" "$BASE_TAG"
 
       - name: Checkout main
         run: |

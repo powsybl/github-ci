@@ -190,7 +190,6 @@ jobs:
       - name: Checkout with new branch, push tmp branch for signed commit
         run: |
           git checkout -b "release-v${GITHUB_MAJOR_VERSION}.${GITHUB_MINOR_VERSION}" "$RUNGHA_GIT_REFERENCE"
-          git tag "base-v${GITHUB_MAJOR_VERSION}.${GITHUB_MINOR_VERSION}"
           TMPRANDOM="$(printf "%04x" $RANDOM)$(printf "%04x" $RANDOM)$(printf "%04x" $RANDOM)"
           # random prefix so that it's not protected, but keep release information to give context
           # can't be protected because the github commit API doesn't allow to create a commit on
@@ -246,7 +245,7 @@ jobs:
       - name: Push release branch and tag
         run: |
           git push origin "release-v${GITHUB_MAJOR_VERSION}.${GITHUB_MINOR_VERSION}"
-          git push origin "v$GITHUB_SHORT_VERSION" "base-v${GITHUB_MAJOR_VERSION}.${GITHUB_MINOR_VERSION}"
+          git push origin "v$GITHUB_SHORT_VERSION"
 
       - name: Checkout main
         run: |
@@ -301,5 +300,7 @@ jobs:
       - name: push to main and cleanup remote tmp branch
         if: env.CURRENT_RELEASE_VERSION == env.GITHUB_SHORT_VERSION
         run: |
+          next_tag="next-v$GITHUB_MAJOR_VERSION.$MAIN_MINOR"
+          git tag "$next_tag"
           git push origin ":${TMPMAINBRANCH}"
-          git push
+          git push origin main "$next_tag"

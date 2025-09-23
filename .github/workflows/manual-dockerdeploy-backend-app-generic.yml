@@ -12,7 +12,7 @@ on:
         default: 'release'
         type: string
     secrets:
-      DOCKERHUB_TOKEN:
+      DOCKER_RELEASE:
         required: true
 
 jobs:
@@ -80,8 +80,8 @@ jobs:
           -Djib.httpTimeout=60000
           -Djib.to.image="$RUNGHA_DOCKER_IMAGE:$CURRENT_TAG_VERSION"
           -Djib.to.auth.username="$RUNGHA_DOCKER_USERNAME"
-          -Djib.to.auth.password="$RUNGHA_DOCKERHUB_TOKEN"
+          -Djib.to.auth.password="$RUNGHA_DOCKER_RELEASE"
         env:
           RUNGHA_DOCKER_IMAGE: ${{ inputs.dockerImage }} # just for defense against script injection
           RUNGHA_DOCKER_USERNAME: ${{ inputs.dockerUsername }} # just for defense against script injection
-          RUNGHA_DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }} # just for defense against script injection
+          RUNGHA_DOCKER_RELEASE: ${{ secrets.DOCKER_RELEASE }} # just for defense against script injection

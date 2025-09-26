@@ -51,7 +51,7 @@ jobs:
           if [[ "$GITHUB_REF" =~ $regex ]]; then
             CURRENT_TAG_VERSION="${BASH_REMATCH[1]}"
           else
-            echo "ERROR: the workflow must be run on a release tag "$regex", got: $GITHUB_REF"
+            echo "ERROR: the workflow must be run on a release tag \"$regex\", got: $GITHUB_REF"
             exit 1
           fi
           echo "CURRENT_TAG_VERSION=${CURRENT_TAG_VERSION}" >> $GITHUB_OUTPUT
@@ -68,7 +68,7 @@ jobs:
 
       - name: Check maven version is tag version
         run: |
-          CURRENT_MAVEN_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)"
+          CURRENT_MAVEN_VERSION="$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)"
           if [[ "$CURRENT_MAVEN_VERSION" != "$CURRENT_TAG_VERSION" ]]; then
             echo "tag version doesn't match maven version. tag: $CURRENT_TAG_VERSION, maven: $CURRENT_MAVEN_VERSION"
             exit 1

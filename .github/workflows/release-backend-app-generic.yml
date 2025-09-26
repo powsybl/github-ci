@@ -300,5 +300,7 @@ jobs:
       - name: push to main and cleanup remote tmp branch
         if: env.CURRENT_RELEASE_VERSION == env.GITHUB_SHORT_VERSION
         run: |
+          next_tag="next-v$GITHUB_MAJOR_VERSION.$MAIN_MINOR"
+          git tag "$next_tag"
           git push origin ":${TMPMAINBRANCH}"
-          git push
+          git push origin main "$next_tag"

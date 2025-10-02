@@ -226,6 +226,7 @@ jobs:
 
       - name: Quality Checks
         run: |
+          npm run lint
           npm run test:coverage
           npm run licenses-check
 

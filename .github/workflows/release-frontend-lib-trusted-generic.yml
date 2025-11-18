@@ -30,69 +30,9 @@ jobs:
     environment:
       name: ${{ inputs.environment }}
     steps:
-      # don't allow to disable this check, and for security only succeed if everything goes perfectly and outputs "true"
-      # TODO deduplicate this code when github actions allows to easily share a script used
-      # by reusable workflows. Currently only the workflow file is checked out at the caller
-      # There are no good workarounds to checkout a companion file (script or composite action)
-      - name: Check Actor Permission
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "checking permission=maintain on repo=$GITHUB_REPOSITORY for user=$GITHUB_ACTOR"
-          # no need to escape GITHUB_REPOSITORY and GITHUB_ACTOR because github
-          # names can only contain ASCII letters, digits, and the characters ., # -, and _.
-          # permission: legacy, is actually a role (one per user) and doesn't
-          #   have "maintain" role, only ["none", "read", "write", "admin"]
-          # role_name: one per user, new standard roles, custom roles, "" and
-          #   "push" and "pull" instead of "none" and "read" and "write": "",
-          #   "read", "triage", "write", "maintain", "admin" and also non
-          #   standard custom roles
-          # user.permissions: boolean status only for each standard permissions "pull", "triage", "push", "maintain", "admin"
-          # So the best for now is to use user.permissions I think.
-          # NOTE: the gh api returns a JSON boolean so jq can only output true or false without quotes
-          # (actually even for JSON strings gh's gojq implementation strips the quotes by default unlike jq)
-          allowed=$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$GITHUB_ACTOR/permission" --jq '.user.permissions["maintain"]')
-          [[ "$allowed" == "true" ]] || exit 1
-
-      - name: Validate Version Type
-        run: |
-          if [[ ! "$RUNGHA_VERSION_TYPE" =~ ^(major|minor|patch)$ ]]; then
-            echo "Error: versionType must be one of: major, minor, patch"
-            echo "Received: $RUNGHA_VERSION_TYPE"
-            exit 1
-          fi
-        env:
-          RUNGHA_VERSION_TYPE: ${{ inputs.versionType }} # just for defense against script injection
-
-      # TODO make a composite action for the next steps to setup git (unless create-github-app-token incorporates all this...)
-      # Copied from create-github-app-token README "Configure git CLI for an app's bot user"
-      - name: Generate GitHub App Token
-        id: app-token
-        uses: actions/create-github-app-token@21cfef2b496dd8ef5b904c159339626a10ad380e # v1 v1.11.6
-        with:
-          app-id: ${{ inputs.githubappId }}
-          private-key: ${{ secrets.VERSIONBUMP_GHAPP_PRIVATE_KEY }}
-      - name: Get GitHub App User ID
-        id: get-user-id
-        run: echo "user-id=$(gh api "/users/${RUNGHA_APP_SLUG}[bot]" --jq .id)" >> "$GITHUB_OUTPUT"
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          RUNGHA_APP_SLUG: ${{ steps.app-token.outputs.app-slug }} # just for defense against script injection
-      # git user not used normally anymore because we use the github commit API
-      # to create the commits, but keep this anyway just in case. We do get the
-      # exact same value as the one github uses for creating the signed commits.
-      - name: Setup git user
-        run: |
-          git config --global user.name "${RUNGHA_APP_SLUG}[bot]"
-          git config --global user.email "${RUNGHA_USER_ID}+${RUNGHA_APP_SLUG}[bot]@users.noreply.github.com"
-        env:
-          RUNGHA_APP_SLUG: ${{ steps.app-token.outputs.app-slug }} # just for defense against script injection
-          RUNGHA_USER_ID: ${{ steps.get-user-id.outputs.user-id }} # just for defense against script injection
-
       - name: Checkout Repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4 v4.2.2
         with:
-          token: ${{ steps.app-token.outputs.token }}
           fetch-depth: 0
 
       - name: Setup Node.js
@@ -101,49 +41,5 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
 
-      - name: Version and Release, push tmp branch for signed commit
-        run: |
-          # Use npm version to update version, don't create commit and tag, get version output vX.Y.Z
-          RELEASE_V_VERSION=$(npm version --no-git-tag-version "$RUNGHA_VERSION_TYPE")
-          RELEASE_VERSION=${RELEASE_V_VERSION#v}
-          TMPRANDOM="$(printf "%04x" $RANDOM)$(printf "%04x" $RANDOM)$(printf "%04x" $RANDOM)"
-          # random prefix so that it's not protected, but keep release information to give context
-          # can't be protected because the github commit API doesn't allow to create a commit on
-          # protected branch even though we have bypass rights for the token of the app
-          TMPMAINBRANCH="copy-${TMPRANDOM}-main-${RELEASE_V_VERSION}"
-          git push origin "main:$TMPMAINBRANCH"
-          echo "TMPMAINBRANCH=$TMPMAINBRANCH" >> $GITHUB_ENV
-          echo "RELEASE_VERSION=$RELEASE_VERSION" >> $GITHUB_ENV
-        env:
-          RUNGHA_VERSION_TYPE: ${{ inputs.versionType }} # just for defense against script injection
-
-      # creates a signed commit on the tmp remote branch with our diff, and
-      # then updates (fast-forward) our local branch to this new commit. It
-      # works because the tmp remote branch was a copy of the local branch
-      # before committing.
-      - name: verified-bot-commit for main branch
-        uses: IAreKyleW00t/verified-bot-commit@27699d08b34a5440e6b4385c6ea3651602d26bcc # v1.3.3
-        with:
-          token: ${{ steps.app-token.outputs.token }}
-          files: "**"
-          message: ${{ format('{0}', env.RELEASE_VERSION) }}
-          ref: ${{ env.TMPMAINBRANCH }}
-
-      - name: push to main and cleanup remote tmp branch
-        run: |
-          git push origin ":${TMPMAINBRANCH}"
-          git push origin main
-          git tag "v$RELEASE_VERSION" main
-          git push origin "v$RELEASE_VERSION"
-
-      - name: Install Dependencies
-        run: npm ci
-
       - name: Publish to NPM
         run: npm publish --access=public
-
-      - name: Create GitHub Release
-        run: |
-          gh release create $(git tag --points-at HEAD) --generate-notes
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}

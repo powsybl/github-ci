@@ -183,7 +183,7 @@ jobs:
           #   }
           # ]
           echo "DEBUG: $tokens_json"
-          echo "DEBUG: $((echo "$tokens_json" | jq -r --arg NODE_AUTH_TOKEN $NODE_AUTH_TOKEN '.[] | select((.token | split("...")[0] | inside($NODE_AUTH_TOKEN)) and (.token | split("...")[-1] | inside($NODE_AUTH_TOKEN)))'))"
+          echo "$tokens_json" | jq -r --arg NODE_AUTH_TOKEN $NODE_AUTH_TOKEN '.[] | select((.token | split("...")[0] | inside($NODE_AUTH_TOKEN)) and (.token | split("...")[-1] | inside($NODE_AUTH_TOKEN)))'
           if ! echo "$tokens_json" | jq -r --arg NODE_AUTH_TOKEN $NODE_AUTH_TOKEN '.[] | select((.token | split("...")[0] | inside($NODE_AUTH_TOKEN)) and (.token | split("...")[-1] | inside($NODE_AUTH_TOKEN)))' | grep "^true$"; then
             echo "No matching automation token found, release would fail because of required 2FA, please use an automation token."
             exit 1

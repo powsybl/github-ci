@@ -113,7 +113,7 @@ jobs:
 
       - name: check npm token type automation
         run: |
-          # since 09/12/25, granular tokens list all the tokens, this check is completly mandatory
+          # since 09/12/25, granular tokens list all the tokens, this check can now be mandatory
           tokens_json=$(npm token list --json)
           # the only way to get a token id ('key') is to manually take note
           # of the key next to the corresponding token. This is annoying for
@@ -182,7 +182,7 @@ jobs:
           #     ]
           #   }
           # ]
-          if ! echo "$tokens_json" | jq -r --arg NODE_AUTH_TOKEN $NODE_AUTH_TOKEN '.[] | select((.token | split("...")[0] | inside($NODE_AUTH_TOKEN)) and (.token | split("...")[-1] | inside($NODE_AUTH_TOKEN)))' | .bypass_2fa'  | grep "^true$"; then
+          if ! echo "$tokens_json" | jq -r --arg NODE_AUTH_TOKEN $NODE_AUTH_TOKEN '.[] | select((.token | split("...")[0] | inside($NODE_AUTH_TOKEN)) and (.token | split("...")[-1] | inside($NODE_AUTH_TOKEN))) | .bypass_2fa'  | grep "^true$"; then
             echo "No matching automation token found, release would fail because of required 2FA, please use an automation token."
             exit 1
           fi

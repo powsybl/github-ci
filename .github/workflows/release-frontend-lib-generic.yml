@@ -139,45 +139,82 @@ jobs:
 
       - name: check npm token type automation
         run: |
-          # NOTE: we can't implement a fully dependable check here, see below.
-          # currently (but it may change in the future I guess), npm token lists fails with automation tokens:
-          #  $ npm token list --json
-          #    npm error code E403
-          #    npm error 403 403 Forbidden - GET https://registry.npmjs.org/-/npm/v1/tokens
-          #  $ echo $?
-          #    1
-          # An error exit code may mean a bad token or a valid automation token, it can never be fully dependable.
-          if tokens_json=$(npm token list --json); then
-            # The api call suceeded, but the only way to get a token id ('key')
-            # is at the creation of the token. After that, we can only match
-            # with a small prefix to identify the token so we do a best effort
-            # not fully dependable check just to catch mistakes: we should
-            # match at least one automation token. The API return value is
-            # something like:
-            #  [{
-            #    "cidr_whitelist": null,
-            #    "readonly": false,
-            #    "automation": false,
-            #    "created": "2025-04-28T11:00:10.814Z",
-            #    "updated": "2025-04-28T11:00:10.814Z",
-            #    "key": "d8005eXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX5bf74539",
-            #    "token": "npm_KL"
-            #  },
-            #  {
-            #    "cidr_whitelist": null,
-            #    "readonly": false,
-            #    "automation": true,
-            #    "created": "2025-04-28T10:36:53.207Z",
-            #    "updated": "2025-04-28T10:36:53.207Z",
-            #    "key": "6a267cXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXc7275c4",
-            #    "token": "npm_b8"
-            #  }]
-            # From now exit on any error, or if there are no automation tokens with a matching prefix.
-            if ! echo "$tokens_json" | jq -r --arg NODE_AUTH_TOKEN $NODE_AUTH_TOKEN '.[] | select(.token | inside($NODE_AUTH_TOKEN)) | .automation' | grep "^true$"; then
-              echo "No matching automation token found, release would fail because of required 2FA, please use an automation token."
-              exit 1
-            fi
+          # since 09/12/25, granular tokens list all the tokens, this check is completly mandatory
+          tokens_json=$(npm token list --json)
+          # the only way to get a token id ('key') is to manually take note
+          # of the key next to the corresponding token. This is annoying for
+          # the user, and also it can get be mixed up, we should check the token directly instead.
+          # With the npm token list --show API, we can only match with the small extract given by json
+          # so we do a best effort not fully dependable check just to catch
+          # mistakes: we should match at least one automation token. The API
+          # return value is something like:
+          # [
+          #   {
+          #     "name": "mytokenbypass2fa",
+          #     "description": "",
+          #     "key": "535d89b7-d7f2-4405-9a34-ddf7a6c7ae32",
+          #     "token": "npm_Fsu6...S47P",
+          #     "expiry": "2025-12-17T13:49:28.149Z",
+          #     "cidr": [],
+          #     "bypass_2fa": true,
+          #     "revoked": null,
+          #     "created": "2025-12-10T13:49:28.199Z",
+          #     "updated": "2025-12-10T13:49:28.199Z",
+          #     "accessed": "2025-12-10T13:49:41.391Z",
+          #     "permissions": [
+          #       {
+          #         "name": "package",
+          #         "action": "write"
+          #       }
+          #     ],
+          #     "scopes": [
+          #       {
+          #         "name": "@gridsuite",
+          #         "type": "package"
+          #       }
+          #     ]
+          #   },
+          #   {
+          #     "name": "mytoken2faenforced",
+          #     "description": "",
+          #     "key": "8a82ae27-32e5-4126-8a9c-2ccf73d7896f",
+          #     "token": "npm_DDKy...0sUt",
+          #     "expiry": "2025-12-17T13:47:00.060Z",
+          #     "cidr": [],
+          #     "bypass_2fa": false,
+          #     "revoked": null,
+          #     "created": "2025-12-10T13:47:00.109Z",
+          #     "updated": "2025-12-10T13:47:00.109Z",
+          #     "accessed": "2025-12-10T13:47:25.380Z",
+          #     "permissions": [
+          #       {
+          #         "name": "package",
+          #         "action": "write"
+          #       },
+          #       {
+          #         "name": "org",
+          #         "action": "write"
+          #       }
+          #     ],
+          #     "scopes": [
+          #       {
+          #         "name": "@gridsuite",
+          #         "type": "package"
+          #       },
+          #       {
+          #         "name": "gridsuite",
+          #         "type": "org"
+          #       }
+          #     ]
+          #   }
+          # ]
+          if ! echo "$tokens_json" | jq -r --arg NODE_AUTH_TOKEN $NODE_AUTH_TOKEN '.[] | select((.token | split("...")[0] | inside($NODE_AUTH_TOKEN)) and (.token | split("...")[-1] | inside($NODE_AUTH_TOKEN)))' | grep "^true$"; then
+            echo "No matching automation token found, release would fail because of required 2FA, please use an automation token."
+            exit 1
           fi
+          # NOTE: we could check the scopes and permissions if we wanted to
+          # detect more cases where the user generated a token that will not
+          # allow to publish.
 
       - name: Version and Release, push tmp branch for signed commit
         run: |

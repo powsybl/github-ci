@@ -260,7 +260,7 @@ jobs:
       - name: Publish to NPM
         run: npm publish --access=public --provenance
         env:
-          NODE_AUTH_TOKEN: ${{ env.NODE_AUTH_TOKEN }} # not defined by mask step => empty string and works when using trusted publisher
+          NODE_AUTH_TOKEN: ${{ env.NODE_AUTH_TOKEN }} # not defined by mask step when using trusted publisher => empty string and still works
 
       - name: Create GitHub Release
         run: |

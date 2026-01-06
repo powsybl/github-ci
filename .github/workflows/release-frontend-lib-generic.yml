@@ -6,8 +6,8 @@ on:
         required: true
         type: string
       nodeAuthToken:
-        description: 'NPM automation access token'
-        required: true
+        description: 'NPM access token (required if Trusted Publisher is not configured on npmjs.com for this project)'
+        required: false
         type: string
       githubappId:
         description: 'GitHub App ID for authentication'
@@ -69,6 +69,7 @@ jobs:
           RUNGHA_VERSION_TYPE: ${{ inputs.versionType }} # just for defense against script injection
 
       - name: Mask Node Auth Token
+        if: ${{ inputs.nodeAuthToken != '' }}
         run: |
           NODE_AUTH_TOKEN=$(jq -r '.inputs.nodeAuthToken' $GITHUB_EVENT_PATH)
           echo ::add-mask::$NODE_AUTH_TOKEN
@@ -112,6 +113,7 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - name: check npm publish rights
+        if: ${{ inputs.nodeAuthToken != '' }}
         run: |
           NPMUSER=$(npm whoami)
           # NOTE: when using --json, the [[<user>]] arg is ignored and all users are returned (npm 10.9.2)
@@ -138,6 +140,7 @@ jobs:
           [[ "$NPMACCESS" == "read-write" ]] || exit 1
 
       - name: check npm token type automation
+        if: ${{ inputs.nodeAuthToken != '' }}
         run: |
           # since 09/12/25, granular tokens list all the tokens, this check can now be mandatory
           tokens_json=$(npm token list --json)
@@ -257,7 +260,7 @@ jobs:
       - name: Publish to NPM
         run: npm publish --access=public --provenance
         env:
-          NODE_AUTH_TOKEN: ${{ env.NODE_AUTH_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ env.NODE_AUTH_TOKEN }} # not defined by mask step when using trusted publisher => empty string and still works
 
       - name: Create GitHub Release
         run: |

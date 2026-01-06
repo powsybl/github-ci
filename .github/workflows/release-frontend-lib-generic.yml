@@ -6,8 +6,8 @@ on:
         required: true
         type: string
       nodeAuthToken:
-        description: 'NPM automation access token'
-        required: true
+        description: 'NPM access token (required if no Trusted Publisher defined)'
+        required: false
         type: string
       githubappId:
         description: 'GitHub App ID for authentication'
@@ -69,10 +69,11 @@ jobs:
           RUNGHA_VERSION_TYPE: ${{ inputs.versionType }} # just for defense against script injection
 
       - name: Mask Node Auth Token
+        if: ${{ inputs.nodeAuthToken != '' }}
         run: |
-          NODE_AUTH_TOKEN=$(jq -r '.inputs.nodeAuthToken' $GITHUB_EVENT_PATH)
-          echo ::add-mask::$NODE_AUTH_TOKEN
-          echo "NODE_AUTH_TOKEN=$NODE_AUTH_TOKEN" >> $GITHUB_ENV
+            NODE_AUTH_TOKEN=$(jq -r '.inputs.nodeAuthToken' $GITHUB_EVENT_PATH)
+            echo ::add-mask::$NODE_AUTH_TOKEN
+            echo "NODE_AUTH_TOKEN=$NODE_AUTH_TOKEN" >> $GITHUB_ENV
 
       # TODO make a composite action for the next steps to setup git (unless create-github-app-token incorporates all this...)
       # Copied from create-github-app-token README "Configure git CLI for an app's bot user"
@@ -112,6 +113,7 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - name: check npm publish rights
+        if: ${{ inputs.nodeAuthToken != '' }}
         run: |
           NPMUSER=$(npm whoami)
           # NOTE: when using --json, the [[<user>]] arg is ignored and all users are returned (npm 10.9.2)
@@ -138,6 +140,7 @@ jobs:
           [[ "$NPMACCESS" == "read-write" ]] || exit 1
 
       - name: check npm token type automation
+        if: ${{ inputs.nodeAuthToken != '' }}
         run: |
           # since 09/12/25, granular tokens list all the tokens, this check can now be mandatory
           tokens_json=$(npm token list --json)

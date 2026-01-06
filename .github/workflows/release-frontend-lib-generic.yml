@@ -6,7 +6,7 @@ on:
         required: true
         type: string
       nodeAuthToken:
-        description: 'NPM access token (required if no Trusted Publisher defined)'
+        description: 'NPM access token (required if Trusted Publisher is not configured on npmjs.com for this project)'
         required: false
         type: string
       githubappId:
@@ -71,9 +71,9 @@ jobs:
       - name: Mask Node Auth Token
         if: ${{ inputs.nodeAuthToken != '' }}
         run: |
-            NODE_AUTH_TOKEN=$(jq -r '.inputs.nodeAuthToken' $GITHUB_EVENT_PATH)
-            echo ::add-mask::$NODE_AUTH_TOKEN
-            echo "NODE_AUTH_TOKEN=$NODE_AUTH_TOKEN" >> $GITHUB_ENV
+          NODE_AUTH_TOKEN=$(jq -r '.inputs.nodeAuthToken' $GITHUB_EVENT_PATH)
+          echo ::add-mask::$NODE_AUTH_TOKEN
+          echo "NODE_AUTH_TOKEN=$NODE_AUTH_TOKEN" >> $GITHUB_ENV
 
       # TODO make a composite action for the next steps to setup git (unless create-github-app-token incorporates all this...)
       # Copied from create-github-app-token README "Configure git CLI for an app's bot user"

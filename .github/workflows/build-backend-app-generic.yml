@@ -30,7 +30,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     environment:
-      name: ${{ github.ref == 'refs/heads/secret-test-remove-dockerimage' && inputs.environment || '' }}
+      name: ${{ github.ref == 'refs/heads/main' && inputs.environment || '' }}
     steps:
       - name: Set up JDK 21
         uses: actions/setup-java@b6e674f4b717d7b0ae3baee0fbe79f498905dfde # v1 v1.4.4
@@ -51,12 +51,11 @@ jobs:
           RUNGHA_SONAR_PROJECT_KEY: ${{ inputs.sonarProjectKey }} # just for defense against script injection
 
       - name: Build Docker image - Main
-        if: github.ref == 'refs/heads/secret-test-remove-dockerimage'
+        if: github.ref == 'refs/heads/main'
         run: >
           mvn --batch-mode deploy -DskipTests -Dmaven.install.skip -Dmaven.deploy.skip -Dpowsybl.docker.deploy
           -Djib.httpTimeout=60000
           ${RUNGHA_DOCKER_IMAGE:+-Djib.to.image="$RUNGHA_DOCKER_IMAGE"}
-          -Djib.to.tags="0.0.1"
           -Djib.to.auth.username="$RUNGHA_DOCKER_USERNAME"
           -Djib.to.auth.password="$RUNGHA_DOCKERHUB_TOKEN"
         env:

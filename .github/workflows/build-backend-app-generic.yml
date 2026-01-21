@@ -2,7 +2,7 @@ on:
   workflow_call:
     inputs:
       dockerImage:
-        required: true
+        required: false
         type: string
       dockerUsername:
         required: true
@@ -55,7 +55,7 @@ jobs:
         run: >
           mvn --batch-mode deploy -DskipTests -Dmaven.install.skip -Dmaven.deploy.skip -Dpowsybl.docker.deploy
           -Djib.httpTimeout=60000
-          -Djib.to.image="$RUNGHA_DOCKER_IMAGE"
+          ${RUNGHA_DOCKER_IMAGE:+-Djib.to.image="$RUNGHA_DOCKER_IMAGE"}
           -Djib.to.auth.username="$RUNGHA_DOCKER_USERNAME"
           -Djib.to.auth.password="$RUNGHA_DOCKERHUB_TOKEN"
         env:

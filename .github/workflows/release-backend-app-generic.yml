@@ -234,8 +234,7 @@ jobs:
         run: >
           mvn --batch-mode deploy -DskipTests -Dmaven.install.skip -Dmaven.deploy.skip -Dpowsybl.docker.deploy
           -Djib.httpTimeout=60000
-          ${RUNGHA_DOCKER_IMAGE:+-Djib.to.image="$RUNGHA_DOCKER_IMAGE"}
-          -Djib.to.tags="$GITHUB_SHORT_VERSION"
+          ${RUNGHA_DOCKER_IMAGE:+-Djib.to.image="$RUNGHA_DOCKER_IMAGE:$GITHUB_SHORT_VERSION"}
           -Djib.to.auth.username="$RUNGHA_DOCKER_USERNAME"
           -Djib.to.auth.password="$RUNGHA_DOCKERHUB_TOKEN"
         env:

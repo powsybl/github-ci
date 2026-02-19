@@ -191,6 +191,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           SONAR_TOKEN: ${{ secrets.sonar-token }}
+        with:
+          args: >
+            -Dsonar.branch.name="$RELEASE_VERSION"
 
       - name: Build and publish Docker image
         uses: elgohr/Publish-Docker-Github-Action@33a481be3e179353cb7793a92b57cf9a6c985860 # v4

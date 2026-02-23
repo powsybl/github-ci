@@ -225,6 +225,7 @@ jobs:
           mvn --batch-mode -Pjacoco verify
           org.sonarsource.scanner.maven:sonar-maven-plugin:sonar
           -Dsonar.host.url=https://sonarcloud.io
+          -Dsonar.branch.name="$GITHUB_SHORT_VERSION"
         env:
           SONAR_TOKEN: ${{ secrets.sonar-token }}
           RUNGHA_SONAR_ORGANIZATION: ${{ inputs.sonarOrganization }} # just for defense against script injection

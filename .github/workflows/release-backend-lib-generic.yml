@@ -154,6 +154,17 @@ jobs:
         env:
           RUNGHA_RELEASE_VERSION: ${{ steps.versions.outputs.RELEASE_VERSION }} # just for defense against script injection
 
+      - name: SonarCloud Analysis
+        run: >
+          mvn --batch-mode -Pjacoco verify
+          org.sonarsource.scanner.maven:sonar-maven-plugin:sonar
+          -Dsonar.host.url=https://sonarcloud.io
+          -Dsonar.branch.name="$RUNGHA_RELEASE_VERSION"
+        env:
+          SONAR_TOKEN: ${{ secrets.sonar-token }}
+          RUNGHA_SONAR_ORGANIZATION: ${{ inputs.sonarOrganization }} # just for defense against script injection
+          RUNGHA_SONAR_PROJECT_KEY: ${{ inputs.sonarProjectKey }} # just for defense against script injection
+
       - name: Create GitHub Release
         run: |
           gh release create "v$RUNGHA_RELEASE_VERSION" \

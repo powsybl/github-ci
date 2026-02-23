@@ -257,6 +257,15 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
+      - name: SonarCloud Analysis
+        uses: SonarSource/sonarqube-scan-action@aa494459d7c39c106cc77b166de8b4250a32bb97 # v5.1.0
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          SONAR_TOKEN: ${{ secrets.sonar-token }}
+        with:
+          args: >
+            -Dsonar.branch.name="$RELEASE_VERSION"
+
       - name: Publish to NPM
         run: npm publish --access=public --provenance
         env:

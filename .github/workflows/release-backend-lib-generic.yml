@@ -15,6 +15,8 @@ on:
     secrets:
       VERSIONBUMP_GHAPP_PRIVATE_KEY:
         required: true
+      sonar-token:
+        required: true
 
 jobs:
   release:

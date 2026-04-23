@@ -1,0 +1,180 @@
+on:
+  workflow_call:
+    inputs:
+      githubappId:
+        required: true
+        type: string
+      releaseVersion:
+        required: true
+        type: string
+      gitReference:
+        required: true
+        type: string
+      environment:
+        required: false
+        default: 'release'
+        type: string
+    secrets:
+      VERSIONBUMP_GHAPP_PRIVATE_KEY:
+        required: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment }}
+    steps:
+      # don't allow to disable this check, and for security only succeed if everything goes perfectly and outputs "true"
+      # TODO deduplicate this code when github actions allows to easily share a script used
+      # by reusable workflows. Currently only the workflow file is checked out at the caller
+      # There are no good workarounds to checkout a companion file (script or composite action)
+      - name: Check Actor Permission
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "checking permission=maintain on repo=$GITHUB_REPOSITORY for user=$GITHUB_ACTOR"
+          # no need to escape GITHUB_REPOSITORY and GITHUB_ACTOR because github
+          # names can only contain ASCII letters, digits, and the characters ., # -, and _.
+          # permission: legacy, is actually a role (one per user) and doesn't
+          #   have "maintain" role, only ["none", "read", "write", "admin"]
+          # role_name: one per user, new standard roles, custom roles, "" and
+          #   "push" and "pull" instead of "none" and "read" and "write": "",
+          #   "read", "triage", "write", "maintain", "admin" and also non
+          #   standard custom roles
+          # user.permissions: boolean status only for each standard permissions "pull", "triage", "push", "maintain", "admin"
+          # So the best for now is to use user.permissions I think.
+          # NOTE: the gh api returns a JSON boolean so jq can only output true or false without quotes
+          # (actually even for JSON strings gh's gojq implementation strips the quotes by default unlike jq)
+          allowed=$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$GITHUB_ACTOR/permission" --jq '.user.permissions["maintain"]')
+          [[ "$allowed" == "true" ]] || exit 1
+
+      # TODO make a composite action for the next steps to setup git (unless create-github-app-token incorporates all this...)
+      # Copied from create-github-app-token README "Configure git CLI for an app's bot user"
+      - uses: actions/create-github-app-token@21cfef2b496dd8ef5b904c159339626a10ad380e # v1 v1.11.6
+        id: app-token
+        name: Generate app token
+        with:
+          app-id: ${{ inputs.githubappId }}
+          private-key: ${{ secrets.VERSIONBUMP_GHAPP_PRIVATE_KEY }}
+      - name: Get GitHub App User ID
+        id: get-user-id
+        run: echo "user-id=$(gh api "/users/${RUNGHA_APP_SLUG}[bot]" --jq .id)" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          RUNGHA_APP_SLUG: ${{ steps.app-token.outputs.app-slug }} # just for defense against script injection
+      # git user not used normally anymore because we use the github commit API
+      # to create the commits, but keep this anyway just in case. We do get the
+      # exact same value as the one github uses for creating the signed commits.
+      - name: Setup git user
+        run: |
+          git config --global user.name "${RUNGHA_APP_SLUG}[bot]"
+          git config --global user.email "${RUNGHA_USER_ID}+${RUNGHA_APP_SLUG}[bot]@users.noreply.github.com"
+        env:
+          RUNGHA_APP_SLUG: ${{ steps.app-token.outputs.app-slug }} # just for defense against script injection
+          RUNGHA_USER_ID: ${{ steps.get-user-id.outputs.user-id }} # just for defense against script injection
+
+      - name: Checkout sources
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4 v4.2.2
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Parse release version
+        run: |
+          regex="^v([0-9]+)\.([0-9]+)$"
+          if [[ $RUNGHA_RELEASE_VERSION =~ $regex ]]
+          then
+            echo "GITHUB_MAJOR_VERSION=${BASH_REMATCH[1]}" >> $GITHUB_ENV
+            echo "GITHUB_MINOR_VERSION=${BASH_REMATCH[2]}" >> $GITHUB_ENV
+            echo "GITHUB_SHORT_VERSION=${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.0" >> $GITHUB_ENV
+          else 
+            echo ERROR: release version should match the format vX.X
+            exit 1
+          fi
+        env:
+          RUNGHA_RELEASE_VERSION: ${{ inputs.releaseVersion }} # just for defense against script injection
+
+      - name: Check if release already exists
+        run: |
+          if git ls-remote --quiet --exit-code origin "refs/heads/release-$RUNGHA_RELEASE_VERSION" >/dev/null 2>&1
+          then
+            echo "ERROR: Release $RUNGHA_RELEASE_VERSION already exists"
+            exit 1
+          else
+            echo "Release $RUNGHA_RELEASE_VERSION doesn't exist, it will be performed"
+          fi
+        env:
+          RUNGHA_RELEASE_VERSION: ${{ inputs.releaseVersion }} # just for defense against script injection
+
+      # TODO deduplicate this code when github actions allows to easily share a script used
+      # by reusable workflows. Currently only the workflow file is checked out at the caller
+      # There are no good workarounds to checkout a companion file (script or composite action)
+      - name: Check if gitReference is merged in main
+        run: |
+          # needs fetch-depth: 0
+          # This ensures that only reviewed commits can be released because
+          # we require reviews and pull requests to allow to merge in main.
+          if ! main_contains=$(git branch -r --format='%(refname:short)' --contains "$RUNGHA_GIT_REFERENCE" origin/main); then
+            echo "ERROR checking whether gitRef $RUNGHA_GIT_REFERENCE is merged in main or not"
+            exit 1
+          elif [ -z "$main_contains" ]; then
+            echo "ERROR: gitRef $RUNGHA_GIT_REFERENCE not merged in main"
+            exit 1
+          else
+            echo "gitRef $RUNGHA_GIT_REFERENCE merged in main, release will be performed"
+          fi
+        env:
+          RUNGHA_GIT_REFERENCE: ${{ inputs.gitReference }} # just for defense against script injection
+
+      # TODO deduplicate this code when github actions allows to easily share a script used
+      # by reusable workflows. Currently only the workflow file is checked out at the caller
+      # There are no good workarounds to checkout a companion file (script or composite action)
+      - name: Check if gitReference is missing already released commits
+        run: |
+          # The following block ensures that the new release will not omit
+          # commits that were already released. If this case was allowed, then
+          # it would for instance be possible to release a new version without
+          # some security fixes. For linear histories, this would happen when
+          # rereleasing an old commit as a new version. For non linear histories,
+          # this could additionally happen when releasing a new commit (subsequently
+          # merged in main) but that branches off of old commits (or even unrelated histories).
+          # If the code that finds existing releases fails and doesn't find anything, it
+          # could be the first release, or it could be that there is a bug or exploit. In
+          # this case, instead of allowing to release anything, we just allow to release the
+          # tip of main (allowing to release anything else would also allow to omit commits).
+          # NOTE: needs fetch-depth: 0
+          all_release_tags=$(git tag --list 'v[0-9]*')
+          if [[ -z "$all_release_tags" ]]; then
+            echo "WARN no existing release tags found, is this the first release?"
+            if ! git_reference_parsed=$(git rev-parse "$RUNGHA_GIT_REFERENCE"); then
+              echo "ERROR rev-parsing gitRef $RUNGHA_GIT_REFERENCE"
+              exit 1
+            fi
+            if ! main_parsed=$(git rev-parse origin/main); then
+              echo "ERROR rev-parsing origin/main"
+              exit 1
+            fi
+            if [[ -n "$git_reference_parsed" && "$git_reference_parsed" != "$main_parsed" ]]; then
+              echo "ERROR: No existing release found, must release the tip of main $main_parsed but got $git_reference_parsed"
+              exit 1
+            else
+              echo "gitRef $RUNGHA_GIT_REFERENCE is tip of main, release will be performed"
+            fi
+          else
+            latest_main_release=$(git merge-base main $all_release_tags)
+            if ! git merge-base --is-ancestor "$latest_main_release" "$RUNGHA_GIT_REFERENCE"; then
+              echo "ERROR gitRef $RUNGHA_GIT_REFERENCE is not a descendant of the latest released commit $latest_main_release"
+              exit 1
+            else
+              echo "gitRef $RUNGHA_GIT_REFERENCE descends from previous releases, release will be performed"
+            fi
+          fi
+        env:
+          RUNGHA_GIT_REFERENCE: ${{ inputs.gitReference }} # just for defense against script injection
+
+      - name: Checkout with new branch, push tmp branch for signed commit
+        run: |
+          git checkout -b "release-v${GITHUB_MAJOR_VERSION}.${GITHUB_MINOR_VERSION}" "$RUNGHA_GIT_REFERENCE"
+          git push origin "release-v${GITHUB_MAJOR_VERSION}.${GITHUB_MINOR_VERSION}"
+        env:
+          RUNGHA_GIT_REFERENCE: ${{ inputs.gitReference }} # just for defense against script injection

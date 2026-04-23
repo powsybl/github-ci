@@ -13,9 +13,6 @@ on:
       releaseVersion:
         required: true
         type: string
-      gitReference:
-        required: true
-        type: string
       environment:
         required: false
         default: 'release'
@@ -83,11 +80,6 @@ jobs:
           RUNGHA_APP_SLUG: ${{ steps.app-token.outputs.app-slug }} # just for defense against script injection
           RUNGHA_USER_ID: ${{ steps.get-user-id.outputs.user-id }} # just for defense against script injection
 
-      - name: Set up JDK 21
-        uses: actions/setup-java@b6e674f4b717d7b0ae3baee0fbe79f498905dfde # v1 v1.4.4
-        with:
-          java-version: 21
-
       - name: Checkout sources
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4 v4.2.2
         with:
@@ -109,87 +101,21 @@ jobs:
         env:
           RUNGHA_RELEASE_VERSION: ${{ inputs.releaseVersion }} # just for defense against script injection
 
-      - name: Check if release already exists
+      - name: Check if release branch exists
         run: |
-          if git ls-remote --quiet --exit-code origin "refs/heads/release-$RUNGHA_RELEASE_VERSION" >/dev/null 2>&1
+          if ! git ls-remote --quiet --exit-code origin "refs/heads/release-$RUNGHA_RELEASE_VERSION" >/dev/null 2>&1
           then
-            echo "ERROR: Release $RUNGHA_RELEASE_VERSION already exists"
+            echo "ERROR: Release branch release-$RUNGHA_RELEASE_VERSION does not exist, run prepare-release first"
             exit 1
           else
-            echo "Release $RUNGHA_RELEASE_VERSION doesn't exist, it will be performed"
+            echo "Release branch exists, proceeding"
           fi
         env:
           RUNGHA_RELEASE_VERSION: ${{ inputs.releaseVersion }} # just for defense against script injection
 
-      # TODO deduplicate this code when github actions allows to easily share a script used
-      # by reusable workflows. Currently only the workflow file is checked out at the caller
-      # There are no good workarounds to checkout a companion file (script or composite action)
-      - name: Check if gitReference is merged in main
+      - name: Checkout release branch, push tmp branch for signed commit
         run: |
-          # needs fetch-depth: 0
-          # This ensures that only reviewed commits can be released because
-          # we require reviews and pull requests to allow to merge in main.
-          if ! main_contains=$(git branch -r --format='%(refname:short)' --contains "$RUNGHA_GIT_REFERENCE" origin/main); then
-            echo "ERROR checking whether gitRef $RUNGHA_GIT_REFERENCE is merged in main or not"
-            exit 1
-          elif [ -z "$main_contains" ]; then
-            echo "ERROR: gitRef $RUNGHA_GIT_REFERENCE not merged in main"
-            exit 1
-          else
-            echo "gitRef $RUNGHA_GIT_REFERENCE merged in main, release will be performed"
-          fi
-        env:
-          RUNGHA_GIT_REFERENCE: ${{ inputs.gitReference }} # just for defense against script injection
-
-      # TODO deduplicate this code when github actions allows to easily share a script used
-      # by reusable workflows. Currently only the workflow file is checked out at the caller
-      # There are no good workarounds to checkout a companion file (script or composite action)
-      - name: Check if gitReference is missing already released commits
-        run: |
-          # The following block ensures that the new release will not omit
-          # commits that were already released. If this case was allowed, then
-          # it would for instance be possible to release a new version without
-          # some security fixes. For linear histories, this would happen when
-          # rereleasing an old commit as a new version. For non linear histories,
-          # this could additionally happen when releasing a new commit (subsequently
-          # merged in main) but that branches off of old commits (or even unrelated histories).
-          # If the code that finds existing releases fails and doesn't find anything, it
-          # could be the first release, or it could be that there is a bug or exploit. In
-          # this case, instead of allowing to release anything, we just allow to release the
-          # tip of main (allowing to release anything else would also allow to omit commits).
-          # NOTE: needs fetch-depth: 0
-          all_release_tags=$(git tag --list 'v[0-9]*')
-          if [[ -z "$all_release_tags" ]]; then
-            echo "WARN no existing release tags found, is this the first release?"
-            if ! git_reference_parsed=$(git rev-parse "$RUNGHA_GIT_REFERENCE"); then
-              echo "ERROR rev-parsing gitRef $RUNGHA_GIT_REFERENCE"
-              exit 1
-            fi
-            if ! main_parsed=$(git rev-parse origin/main); then
-              echo "ERROR rev-parsing origin/main"
-              exit 1
-            fi
-            if [[ -n "$git_reference_parsed" && "$git_reference_parsed" != "$main_parsed" ]]; then
-              echo "ERROR: No existing release found, must release the tip of main $main_parsed but got $git_reference_parsed"
-              exit 1
-            else
-              echo "gitRef $RUNGHA_GIT_REFERENCE is tip of main, release will be performed"
-            fi
-          else
-            latest_main_release=$(git merge-base main $all_release_tags)
-            if ! git merge-base --is-ancestor "$latest_main_release" "$RUNGHA_GIT_REFERENCE"; then
-              echo "ERROR gitRef $RUNGHA_GIT_REFERENCE is not a descendant of the latest released commit $latest_main_release"
-              exit 1
-            else
-              echo "gitRef $RUNGHA_GIT_REFERENCE descends from previous releases, release will be performed"
-            fi
-          fi
-        env:
-          RUNGHA_GIT_REFERENCE: ${{ inputs.gitReference }} # just for defense against script injection
-
-      - name: Checkout with new branch, push tmp branch for signed commit
-        run: |
-          git checkout -b "release-v${GITHUB_MAJOR_VERSION}.${GITHUB_MINOR_VERSION}" "$RUNGHA_GIT_REFERENCE"
+          git checkout "release-v${GITHUB_MAJOR_VERSION}.${GITHUB_MINOR_VERSION}" "$RUNGHA_GIT_REFERENCE"
           TMPRANDOM="$(printf "%04x" $RANDOM)$(printf "%04x" $RANDOM)$(printf "%04x" $RANDOM)"
           # random prefix so that it's not protected, but keep release information to give context
           # can't be protected because the github commit API doesn't allow to create a commit on
@@ -200,8 +126,13 @@ jobs:
         env:
           RUNGHA_GIT_REFERENCE: ${{ inputs.gitReference }} # just for defense against script injection
 
+      - name: Set up JDK 21
+        uses: actions/setup-java@b6e674f4b717d7b0ae3baee0fbe79f498905dfde # v1 v1.4.4
+        with:
+          java-version: 21
+
       - name: Change Maven version to release version
-        run: mvn --batch-mode versions:set -DgenerateBackupPoms=false -DnewVersion="$GITHUB_SHORT_VERSION"
+        run: mvn -ntp --batch-mode versions:set -DgenerateBackupPoms=false -DnewVersion="$GITHUB_SHORT_VERSION"
 
       # creates a signed commit on the tmp remote branch with our diff, and
       # then updates (fast-forward) our local branch to this new commit. It
@@ -222,7 +153,7 @@ jobs:
 
       - name: Build with Maven
         run: >
-          mvn --batch-mode -Pjacoco verify
+          mvn -ntp --batch-mode -Pjacoco verify
           org.sonarsource.scanner.maven:sonar-maven-plugin:sonar
           -Dsonar.host.url=https://sonarcloud.io
           -Dsonar.branch.name="$GITHUB_SHORT_VERSION"
@@ -233,7 +164,7 @@ jobs:
 
       - name: Build Docker image
         run: >
-          mvn --batch-mode deploy -DskipTests -Dmaven.install.skip -Dmaven.deploy.skip -Dpowsybl.docker.deploy
+          mvn -ntp --batch-mode deploy -DskipTests -Dmaven.install.skip -Dmaven.deploy.skip -Dpowsybl.docker.deploy
           -Djib.httpTimeout=60000
           ${RUNGHA_DOCKER_IMAGE:+-Djib.to.image="$RUNGHA_DOCKER_IMAGE:$GITHUB_SHORT_VERSION"}
           -Djib.to.auth.username="$RUNGHA_DOCKER_USERNAME"

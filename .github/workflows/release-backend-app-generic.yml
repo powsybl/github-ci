@@ -101,7 +101,7 @@ jobs:
         env:
           RUNGHA_RELEASE_VERSION: ${{ inputs.releaseVersion }} # just for defense against script injection
 
-      - name: Check if release branch exists
+      - name: Check if release branch doesnt exists
         run: |
           if ! git ls-remote --quiet --exit-code origin "refs/heads/release-$RUNGHA_RELEASE_VERSION" >/dev/null 2>&1
           then
@@ -115,7 +115,7 @@ jobs:
 
       - name: Checkout release branch, push tmp branch for signed commit
         run: |
-          git checkout "release-v${GITHUB_MAJOR_VERSION}.${GITHUB_MINOR_VERSION}" "$RUNGHA_GIT_REFERENCE"
+          git checkout "release-v${GITHUB_MAJOR_VERSION}.${GITHUB_MINOR_VERSION}"
           TMPRANDOM="$(printf "%04x" $RANDOM)$(printf "%04x" $RANDOM)$(printf "%04x" $RANDOM)"
           # random prefix so that it's not protected, but keep release information to give context
           # can't be protected because the github commit API doesn't allow to create a commit on
@@ -123,8 +123,6 @@ jobs:
           TMPRELEASEBRANCH="copy-${TMPRANDOM}-release-v${GITHUB_MAJOR_VERSION}.${GITHUB_MINOR_VERSION}"
           git push origin "release-v${GITHUB_MAJOR_VERSION}.${GITHUB_MINOR_VERSION}:$TMPRELEASEBRANCH"
           echo "TMPRELEASEBRANCH=$TMPRELEASEBRANCH" >> $GITHUB_ENV
-        env:
-          RUNGHA_GIT_REFERENCE: ${{ inputs.gitReference }} # just for defense against script injection
 
       - name: Set up JDK 21
         uses: actions/setup-java@b6e674f4b717d7b0ae3baee0fbe79f498905dfde # v1 v1.4.4

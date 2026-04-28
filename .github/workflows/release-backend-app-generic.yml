@@ -101,14 +101,14 @@ jobs:
         env:
           RUNGHA_RELEASE_VERSION: ${{ inputs.releaseVersion }} # just for defense against script injection
 
-      - name: Check if release branch doesnt exists
+      - name: Check if release already exists
         run: |
-          if ! git ls-remote --quiet --exit-code origin "refs/heads/release-$RUNGHA_RELEASE_VERSION" >/dev/null 2>&1
+          if git ls-remote --quiet --exit-code origin "refs/heads/release-$RUNGHA_RELEASE_VERSION" >/dev/null 2>&1
           then
+            echo "Release branch exists, proceeding"
+          else
             echo "ERROR: Release branch release-$RUNGHA_RELEASE_VERSION does not exist, run prepare-release first"
             exit 1
-          else
-            echo "Release branch exists, proceeding"
           fi
         env:
           RUNGHA_RELEASE_VERSION: ${{ inputs.releaseVersion }} # just for defense against script injection

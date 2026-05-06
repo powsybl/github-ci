@@ -81,13 +81,20 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.sonar-token }}
 
-      - name: Build and publish Docker image - Main
+      - name: Login to Docker Hub
         if: github.ref == 'refs/heads/main'
-        uses: elgohr/Publish-Docker-Github-Action@33a481be3e179353cb7793a92b57cf9a6c985860 # v4
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
         with:
-          name: ${{ inputs.dockerImage }}
           username: ${{ inputs.dockerUsername }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and publish Docker image - Main
+        if: github.ref == 'refs/heads/main'
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          push: true
+          tags: ${{ inputs.dockerImage }}
 
       - name: Broadcast update event
         if: github.ref == 'refs/heads/main'

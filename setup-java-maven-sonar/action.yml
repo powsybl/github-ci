@@ -5,6 +5,9 @@ inputs:
   sonar_projectKey:
     required: true
     type: string
+  sonar_token:
+    required: true
+    type: string
 
 runs:
   using: "composite"
@@ -42,5 +45,5 @@ runs:
         -Dsonar.organization=powsybl-ci-github
         -Dsonar.projectKey=${{ inputs.sonar_projectKey }}
       env:
-        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        SONAR_TOKEN: ${{ inputs.sonar_token }}
       shell: bash

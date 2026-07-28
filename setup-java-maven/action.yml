@@ -22,6 +22,7 @@ runs:
     - name: Build with Maven (Ubuntu)
       if: matrix.os == 'ubuntu-latest'
       run: ./mvnw -B -ntp -Dpowsybl.docker-unit-tests.skip=false -Pjacoco install # specific to core.
+      shell: bash
 
     - name: Build with Maven (Windows)
       if: matrix.os == 'windows-latest'
@@ -31,3 +32,4 @@ runs:
     - name: Build with Maven (MacOS)
       if: matrix.os == 'macos-latest'
       run: ./mvnw -B -ntp verify -Dpowsybl.checks.skip=true # specific to core.
+      shell: bash

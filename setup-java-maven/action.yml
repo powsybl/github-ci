@@ -3,7 +3,7 @@ description: "Setup java maven workflow test"
 
 inputs:
   maven-args:
-    description: "Maven args TODO (for each os there is different args)"
+    description: "Maven args TODO (for each os ? there is different args)"
     required: false
 
 runs:
@@ -21,19 +21,13 @@ runs:
 
     - name: Build with Maven (Ubuntu)
       if: matrix.os == 'ubuntu-latest'
-      run: echo "Running maven build on ubuntu"
-      shell: bash
-      # run: ./mvnw -B -ntp -Dpowsybl.docker-unit-tests.skip=false -Pjacoco install # specific to core.
+      run: ./mvnw -B -ntp -Dpowsybl.docker-unit-tests.skip=false -Pjacoco install # specific to core.
 
     - name: Build with Maven (Windows)
       if: matrix.os == 'windows-latest'
-      run: echo "Running maven build on windows"
-      shell: bash
-      # run: mvnw.cmd -B -ntp verify -Dpowsybl.checks.skip=true # specific to core.
-      # shell: cmd
-      
+      run: mvnw.cmd -B -ntp verify -Dpowsybl.checks.skip=true # specific to core.
+      shell: cmd
+
     - name: Build with Maven (MacOS)
       if: matrix.os == 'macos-latest'
-      run: echo "Running maven build on macos"
-      shell: bash
-      # run: ./mvnw -B -ntp verify -Dpowsybl.checks.skip=true # specific to core.
+      run: ./mvnw -B -ntp verify -Dpowsybl.checks.skip=true # specific to core.

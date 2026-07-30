@@ -1,19 +1,30 @@
-name: "Setup Java Maven"
-description: "Setup java maven workflow test"
+name: "Setup Dev CI⚡"
+description: "Setup [checkout, JDK, Maven build, Sonar] Test"
 
 inputs:
   sonar_projectKey:
     required: true
-    type: string
+    description: The project key in sonar cloud
   sonar_token:
     required: true
-    type: string
+    description: Sonar token
+  maven_args_ubuntu:
+    default: '-B -ntp -Dpowsybl.docker-unit-tests.skip=false -Pjacoco install'
+    description: Maven arguments on Windows
+  maven_args_windows:
+    default: '-B -ntp verify -Dpowsybl.checks.skip=true'
+    description: Maven arguments on Windows
+  maven_args_macos:
+    default: '-B -ntp verify -Dpowsybl.checks.skip=true'
+    description: Maven arguments on macOS
 
 runs:
   using: "composite"
   steps:
     - name: Checkout sources
-      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
 
     - name: Set up JDK 21
       uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
@@ -24,17 +35,17 @@ runs:
 
     - name: Build with Maven (Ubuntu)
       if: matrix.os == 'ubuntu-latest'
-      run: ./mvnw -B -ntp -Dpowsybl.docker-unit-tests.skip=false -Pjacoco install # specific to core.
+      run: ./mvnw ${{ inputs.maven_args_ubuntu }}
       shell: bash
 
     - name: Build with Maven (Windows)
       if: matrix.os == 'windows-latest'
-      run: mvnw.cmd -B -ntp verify -Dpowsybl.checks.skip=true # specific to core.
+      run: mvnw.cmd ${{ inputs.maven_args_windows }}
       shell: cmd
 
     - name: Build with Maven (MacOS)
       if: matrix.os == 'macos-latest'
-      run: ./mvnw -B -ntp verify -Dpowsybl.checks.skip=true # specific to core.
+      run: ./mvnw ${{ inputs.maven_args_macos }}
       shell: bash
 
     - name: Run SonarCloud analysis

@@ -1,5 +1,5 @@
 name: "Setup Dev CI⚡"
-description: "Setup [checkout, JDK, Maven build, Sonar] Test"
+description: "Setup [checkout, JDK, Maven build, Sonar]"
 
 inputs:
   sonar_projectKey:
@@ -10,12 +10,12 @@ inputs:
     description: Sonar token
   maven_args_ubuntu:
     default: '-B -ntp -Dpowsybl.docker-unit-tests.skip=false -Pjacoco install'
-    description: Maven arguments on Windows
+    description: Maven arguments on Ubuntu
   maven_args_windows:
-    default: '-B -ntp verify -Dpowsybl.checks.skip=true'
+    default: '-B -ntp verify'
     description: Maven arguments on Windows
   maven_args_macos:
-    default: '-B -ntp verify -Dpowsybl.checks.skip=true'
+    default: '-B -ntp verify'
     description: Maven arguments on macOS
 
 runs:

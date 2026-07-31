@@ -26,15 +26,15 @@ jobs:
 | `sonar_projectKey`   | ✅        | —                                                                 | SonarCloud project key     |
 | `sonar_token`        | ✅        | —                                                                 | Sonar token                |
 | `maven_args_ubuntu`  | ❌        | `-B -ntp -Dpowsybl.docker-unit-tests.skip=false -Pjacoco install` | Maven arguments on Ubuntu  |
-| `maven_args_windows` | ❌        | `-B -ntp verify -Dpowsybl.checks.skip=true`                       | Maven arguments on Windows |
-| `maven_args_macos`   | ❌        | `-B -ntp verify -Dpowsybl.checks.skip=true`                       | Maven arguments on macOS   |
+| `maven_args_windows` | ❌        | `-B -ntp verify`                                                  | Maven arguments on Windows |
+| `maven_args_macos`   | ❌        | `-B -ntp verify`                                                  | Maven arguments on macOS   |
 
 #### What it does
 
-1. Checks out the repository
+1. Clone the repository
 2. Sets up JDK 21 (Temurin) with Maven cache
 3. Builds with Maven (`./mvnw` or `mvnw.cmd` depending on OS)
-4. Runs SonarCloud analysis on Ubuntu only
+4. Runs SonarCloud analysis on Ubuntu
 
 #### Requirements
 

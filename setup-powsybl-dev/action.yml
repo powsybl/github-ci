@@ -1,4 +1,4 @@
-name: "Setup Dev CI⚡"
+name: "Setup Dev CI ⚡"
 description: "Setup [checkout, JDK, Maven build, Sonar]"
 
 inputs:
@@ -9,7 +9,7 @@ inputs:
     required: true
     description: Sonar token
   maven_args_ubuntu:
-    default: '-B -ntp -Dpowsybl.docker-unit-tests.skip=false -Pjacoco install'
+    default: '-B -ntp -Pjacoco install'
     description: Maven arguments on Ubuntu
   maven_args_windows:
     default: '-B -ntp verify'

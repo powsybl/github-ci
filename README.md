@@ -1,8 +1,15 @@
 # github-ci
 Generic CI workflows for PowSyBl repositories
 
+## Available composite actions
+
 ### Setup Dev CI ⚡
-Composite GitHub Action for PowSyBl Java projects: checkout, JDK 21, Maven build, and SonarCloud analysis.
+Default composite GitHub Action for PowSyBl Java projects.
+#### Steps 
+- Checkout the project sources
+- Setup Java
+- Build and test using Maven
+- Run the SonarCloud analysis.
 #### Usage
 ```yaml
 jobs:
@@ -12,7 +19,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
-      - uses: powsybl/github-ci/setup-dev-ci@<sha>
+      - uses: uses: powsybl/github-ci/setup-dev-ci@<major version>
         with:
           sonar_token: ${{ secrets.SONAR_TOKEN }}
           sonar_projectKey: 'com.powsybl:powsybl-core'
@@ -23,11 +30,11 @@ jobs:
 
 | Input                | Required | Default                                                           | Description                |
 |----------------------|----------|-------------------------------------------------------------------|----------------------------|
-| `sonar_projectKey`   | ✅        | —                                                                 | SonarCloud project key     |
-| `sonar_token`        | ✅        | —                                                                 | Sonar token                |
-| `maven_args_ubuntu`  | ❌        | `-B -ntp -Dpowsybl.docker-unit-tests.skip=false -Pjacoco install` | Maven arguments on Ubuntu  |
-| `maven_args_windows` | ❌        | `-B -ntp verify`                                                  | Maven arguments on Windows |
-| `maven_args_macos`   | ❌        | `-B -ntp verify`                                                  | Maven arguments on macOS   |
+| `sonar_projectKey`   | ✅       | —                                                                 | SonarCloud project key     |
+| `sonar_token`        | ✅       | —                                                                 | Sonar token                |
+| `maven_args_ubuntu`  | ❌       | `-B -ntp -Pjacoco install` | Maven arguments on Ubuntu  |
+| `maven_args_windows` | ❌       | `-B -ntp verify`                                                  | Maven arguments on Windows |
+| `maven_args_macos`   | ❌       | `-B -ntp verify`                                                  | Maven arguments on macOS   |
 
 #### What it does
 

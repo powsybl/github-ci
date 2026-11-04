@@ -5,11 +5,13 @@ Generic CI workflows for PowSyBl repositories
 
 ### Setup Dev CI ⚡
 Default composite GitHub Action for PowSyBl Java projects.
-#### Steps 
+
+#### What it does 
 - Checkout the project sources
-- Setup Java
-- Build and test using Maven
+- Setup Java with Maven cache
+- Build and test using Maven (`./mvnw` or `mvnw.cmd` depending on OS)
 - Run the SonarCloud analysis.
+
 #### Usage
 ```yaml
 jobs:
@@ -19,7 +21,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
-      - uses: uses: powsybl/github-ci/setup-dev-ci@<major version>
+      - uses: powsybl/github-ci/setup-dev-ci@<major version>
         with:
           sonar_token: ${{ secrets.SONAR_TOKEN }}
           sonar_projectKey: 'com.powsybl:powsybl-core'
@@ -28,22 +30,16 @@ jobs:
 
 #### Inputs
 
-| Input                | Required | Default                                                           | Description                |
-|----------------------|----------|-------------------------------------------------------------------|----------------------------|
-| `sonar_projectKey`   | ✅       | —                                                                 | SonarCloud project key     |
-| `sonar_token`        | ✅       | —                                                                 | Sonar token                |
+| Input                | Required | Default                    | Description                |
+|----------------------|----------|----------------------------|----------------------------|
+| `sonar_projectKey`   | ✅       | —                          | SonarCloud project key     |
+| `sonar_token`        | ✅       | —                          | Sonar token                |
 | `maven_args_ubuntu`  | ❌       | `-B -ntp -Pjacoco install` | Maven arguments on Ubuntu  |
-| `maven_args_windows` | ❌       | `-B -ntp verify`                                                  | Maven arguments on Windows |
-| `maven_args_macos`   | ❌       | `-B -ntp verify`                                                  | Maven arguments on macOS   |
+| `maven_args_windows` | ❌       | `-B -ntp verify`           | Maven arguments on Windows |
+| `maven_args_macos`   | ❌       | `-B -ntp verify`           | Maven arguments on macOS   |
 
-#### What it does
-
-1. Clone the repository
-2. Sets up JDK 21 (Temurin) with Maven cache
-3. Builds with Maven (`./mvnw` or `mvnw.cmd` depending on OS)
-4. Runs SonarCloud analysis on Ubuntu
 
 #### Requirements
 
-- The calling job must use a matrix with running os
+- The calling job must use a matrix with running os, with at least `ubuntu-latest`.
 - Supported OS: `ubuntu-latest` | `windows-latest` | `macos-latest`

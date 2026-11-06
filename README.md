@@ -21,7 +21,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
-      - uses: powsybl/github-ci/setup-dev-ci@<major version>
+      - uses: powsybl/github-ci/setup-powsybl-dev@<major version>
         with:
           sonar_token: ${{ secrets.SONAR_TOKEN }}
           sonar_projectKey: 'com.powsybl:powsybl-core'

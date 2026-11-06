@@ -13,8 +13,8 @@ inputs:
     required: true
     description: Sonar token
   distribution_module:
-    required: true
-    description: Module (relative to working_directory) where dependencies and the aggregated Jacoco report are regrouped (e.g. distribution-core)
+    default: '.'
+    description: Module (relative to working_directory) where dependencies and the aggregated Jacoco report are regrouped (e.g. distribution-core). Keep the default '.' for a single-module project
   working_directory:
     default: '.'
     description: Directory containing the Maven project (same value as in powsybl-fork-build)
@@ -129,7 +129,8 @@ runs:
         unzip -q "$ARTIFACTS/sonar-data.zip" -d "$EXTRACTED"
         find "$EXTRACTED" -type l -delete
         find "$EXTRACTED" -type f -not \( -path '*/target/classes/*' -o -path '*/target/generated-sources/*' \
-          -o -path '*/target/dependency/*' -o -path '*/target/site/jacoco-aggregate/jacoco.xml' \) -delete
+          -o -path '*/target/dependency/*' -o -path '*/target/site/jacoco-aggregate/jacoco.xml' \
+          -o -path '*/target/site/jacoco/jacoco.xml' \) -delete
         PROJECT_DIR="$PWD"
         (cd "$EXTRACTED" && find . -type f -print0 | xargs -0 -r cp --parents -t "$PROJECT_DIR")
         list() {
@@ -157,11 +158,15 @@ runs:
           echo "::warning::Libraries directory not found"
         fi
         JACOCO=""
-        if [ -f "$DIST_MODULE/target/site/jacoco-aggregate/jacoco.xml" ] && [[ "$DIST_MODULE" =~ $SAFE ]]; then
-          JACOCO="$DIST_MODULE/target/site/jacoco-aggregate/jacoco.xml"
-        else
-          echo "::warning::Jacoco report not found"
+        if [[ "$DIST_MODULE" =~ $SAFE ]]; then
+          for CANDIDATE in "$DIST_MODULE/target/site/jacoco-aggregate/jacoco.xml" "$DIST_MODULE/target/site/jacoco/jacoco.xml"; do
+            if [ -f "$CANDIDATE" ]; then
+              JACOCO="$CANDIDATE"
+              break
+            fi
+          done
         fi
+        [ -n "$JACOCO" ] || echo "::warning::Jacoco report not found"
         {
           echo "sources=$SOURCES"
           echo "generated=$GENERATED"

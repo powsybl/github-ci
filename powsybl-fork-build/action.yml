@@ -15,8 +15,8 @@ inputs:
     default: '-B -ntp verify'
     description: Maven arguments on macOS
   distribution_module:
-    required: true
-    description: Module (relative to working_directory) where dependencies and the aggregated Jacoco report are regrouped (e.g. distribution-core)
+    default: '.'
+    description: Module (relative to working_directory) where dependencies and the aggregated Jacoco report are regrouped (e.g. distribution-core). Keep the default '.' for a single-module project
   working_directory:
     default: '.'
     description: Directory containing the Maven project (e.g. for repositories where the Java part is in a sub directory)
@@ -80,12 +80,14 @@ runs:
         else
           echo "::warning::$DIST_MODULE/target/dependency not found"
         fi
-        JACOCO="$DIST_MODULE/target/site/jacoco-aggregate/jacoco.xml"
-        if [ -f "$JACOCO" ]; then
-          cp --parents "$JACOCO" -t "$STAGING"
-        else
-          echo "::warning::$JACOCO not found"
-        fi
+        FOUND=false
+        for JACOCO in "$DIST_MODULE/target/site/jacoco-aggregate/jacoco.xml" "$DIST_MODULE/target/site/jacoco/jacoco.xml"; do
+          if [ -f "$JACOCO" ]; then
+            cp --parents "$JACOCO" -t "$STAGING"
+            FOUND=true
+          fi
+        done
+        $FOUND || echo "::warning::Jacoco report not found in $DIST_MODULE/target/site"
         if ! find "$STAGING" -type d -path '*/target/classes' | grep -q .; then
           echo "::error::No compiled classes found"
           exit 1

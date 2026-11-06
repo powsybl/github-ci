@@ -107,16 +107,16 @@ jobs:
 
 #### Inputs
 
-| Input                 | Action | Required | Default                    | Description                                                                                                           |
-|-----------------------|--------|----------|----------------------------|-----------------------------------------------------------------------------------------------------------------------|
-| `distribution_module` | both   | ✅       | —                          | Module (relative to `working_directory`) regrouping `target/dependency` and `target/site/jacoco-aggregate/jacoco.xml` |
-| `working_directory`   | both   | ❌       | `.`                        | Maven project directory (e.g. Java part of a mixed repository). Same value in both actions                            |
-| `java_version`        | both   | ❌       | `21`                       | Java version                                                                                                          |
-| `maven_args_ubuntu`   | build  | ❌       | `-B -ntp -Pjacoco install` | Maven arguments on Ubuntu                                                                                             |
-| `maven_args_windows`  | build  | ❌       | `-B -ntp verify`           | Maven arguments on Windows                                                                                            |
-| `maven_args_macos`    | build  | ❌       | `-B -ntp verify`           | Maven arguments on macOS                                                                                              |
-| `sonar_projectKey`    | sonar  | ✅       | —                          | SonarCloud project key                                                                                                |
-| `sonar_token`         | sonar  | ✅       | —                          | Sonar token                                                                                                           |
+| Input                 | Action | Required | Default                    | Description                                                                                                                                                                                                                                     |
+|-----------------------|--------|----------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `distribution_module` | both   | ❌       | `.`                        | Module (relative to `working_directory`) regrouping `target/dependency` and the Jacoco report (`target/site/jacoco-aggregate/jacoco.xml`, or `target/site/jacoco/jacoco.xml` for a single-module project). Keep `.` for a single-module project |
+| `working_directory`   | both   | ❌       | `.`                        | Maven project directory (e.g. Java part of a mixed repository). Same value in both actions                                                                                                                                                      |
+| `java_version`        | both   | ❌       | `21`                       | Java version                                                                                                                                                                                                                                    |
+| `maven_args_ubuntu`   | build  | ❌       | `-B -ntp -Pjacoco install` | Maven arguments on Ubuntu                                                                                                                                                                                                                       |
+| `maven_args_windows`  | build  | ❌       | `-B -ntp verify`           | Maven arguments on Windows                                                                                                                                                                                                                      |
+| `maven_args_macos`    | build  | ❌       | `-B -ntp verify`           | Maven arguments on macOS                                                                                                                                                                                                                        |
+| `sonar_projectKey`    | sonar  | ✅       | —                          | SonarCloud project key                                                                                                                                                                                                                          |
+| `sonar_token`         | sonar  | ✅       | —                          | Sonar token                                                                                                                                                                                                                                     |
 
 #### Security model
 - The privileged job never builds or runs anything coming from the fork; the fork sources and the artifact are only read by the Sonar scanner.

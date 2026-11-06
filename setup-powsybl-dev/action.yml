@@ -36,18 +36,31 @@ runs:
 
     - name: Build with Maven (Ubuntu)
       if: matrix.os == 'ubuntu-latest'
-      run: ./mvnw ${{ inputs.maven_args_ubuntu }}
+      run: |
+        read -r -a maven_args <<< "$MAVEN_ARGS"
+        ./mvnw "${maven_args[@]}"
       shell: bash
+      env:
+        MAVEN_ARGS: ${{ inputs.maven_args_ubuntu }}
 
     - name: Build with Maven (Windows)
       if: matrix.os == 'windows-latest'
-      run: mvnw.cmd ${{ inputs.maven_args_windows }}
-      shell: cmd
+      run: |
+        $mavenArgs = $env:MAVEN_ARGS.Trim() -split '\s+'
+        & .\mvnw.cmd @mavenArgs
+        exit $LASTEXITCODE
+      shell: pwsh
+      env:
+        MAVEN_ARGS: ${{ inputs.maven_args_windows }}
 
     - name: Build with Maven (MacOS)
       if: matrix.os == 'macos-latest'
-      run: ./mvnw ${{ inputs.maven_args_macos }}
+      run: |
+        read -r -a maven_args <<< "$MAVEN_ARGS"
+        ./mvnw "${maven_args[@]}"
       shell: bash
+      env:
+        MAVEN_ARGS: ${{ inputs.maven_args_macos }}
 
     - name: Run SonarCloud analysis
       if: matrix.os == 'ubuntu-latest'
@@ -55,7 +68,8 @@ runs:
         ./mvnw -B -ntp -DskipTests sonar:sonar
         -Dsonar.host.url=https://sonarcloud.io
         -Dsonar.organization=powsybl-ci-github
-        -Dsonar.projectKey=${{ inputs.sonar_projectKey }}
+        "-Dsonar.projectKey=$SONAR_PROJECT_KEY"
       env:
         SONAR_TOKEN: ${{ inputs.sonar_token }}
+        SONAR_PROJECT_KEY: ${{ inputs.sonar_projectKey }}
       shell: bash

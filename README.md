@@ -38,7 +38,6 @@ jobs:
 | `maven_args_windows` | ❌       | `-B -ntp verify`           | Maven arguments on Windows |
 | `maven_args_macos`   | ❌       | `-B -ntp verify`           | Maven arguments on macOS   |
 
-
 #### Requirements
 
 - The calling job must use a matrix with running os, with at least `ubuntu-latest`.

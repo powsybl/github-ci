@@ -73,6 +73,7 @@ runs:
         ref: ${{ steps.pr.outputs.head_sha }}
         fetch-depth: 0
         persist-credentials: false
+        allow-unsafe-pr-checkout: true # Needed to check out a PR from a fork
 
     # No Maven cache: nothing is built here, and the cache must not be shared with unprivileged builds.
     - name: Set up JDK
@@ -135,14 +136,14 @@ runs:
         (cd "$EXTRACTED" && find . -type f -print0 | xargs -0 -r cp --parents -t "$PROJECT_DIR")
         list() {
           local out="" d
-          while IFS= read -r d; do
+          while IFS= read -r -d '' d; do
             d="${d#./}"
             if [[ "$d" =~ $SAFE ]]; then
               out+="${out:+,}$d"
             else
               echo "::warning::Ignoring unsafe path" >&2
             fi
-          done < <(find . -name node_modules -prune -o -type d "$@" -print | sort -u)
+          done < <(find . -name node_modules -prune -o -type d "$@" -print0 | sort -zu)
           echo "$out"
         }
         SOURCES=$(list -path '*/main/java' -not -path '*/target/*')
@@ -153,7 +154,7 @@ runs:
         [ -n "$BINARIES" ] || { echo "::error::No binaries directories found"; exit 1; }
         LIBRARIES=""
         if [ -d "$DIST_MODULE/target/dependency" ] && [[ "$DIST_MODULE/target/dependency" =~ $SAFE ]]; then
-          LIBRARIES="$DIST_MODULE/target/dependency"
+          LIBRARIES="$DIST_MODULE/target/dependency/*.jar"
         else
           echo "::warning::Libraries directory not found"
         fi
@@ -184,12 +185,11 @@ runs:
       uses: SonarSource/sonarqube-scan-action@a31c9398be7ace6bbfaf30c0bd5d415f843d45e9 # v7.0.0
       env:
         GITHUB_TOKEN: ${{ github.token }}
-        RUNGHA_SONAR_PROJECT_KEY: ${{ inputs.sonar_projectKey }}
         SONAR_TOKEN: ${{ inputs.sonar_token }}
       with:
         projectBaseDir: ${{ inputs.working_directory }}
         args: >
-          "-Dsonar.projectKey=$RUNGHA_SONAR_PROJECT_KEY"
+          "-Dsonar.projectKey=${{ inputs.sonar_projectKey }}"
           -Dsonar.organization=powsybl-ci-github
           "-Dsonar.sources=${{ steps.prepare.outputs.sources }}"
           "-Dsonar.generatedSources=${{ steps.prepare.outputs.generated }}"

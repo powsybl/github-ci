@@ -66,22 +66,6 @@ runs:
           core.setOutput('head_sha', run.head_sha);
           core.setOutput('head_repo', run.head_repository.full_name);
 
-    - name: Checkout sources
-      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      with:
-        repository: ${{ steps.pr.outputs.head_repo }}
-        ref: ${{ steps.pr.outputs.head_sha }}
-        fetch-depth: 0
-        persist-credentials: false
-        allow-unsafe-pr-checkout: true # Needed to check out a PR from a fork
-
-    # No Maven cache: nothing is built here, and the cache must not be shared with unprivileged builds.
-    - name: Set up JDK
-      uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
-      with:
-        distribution: 'temurin'
-        java-version: ${{ inputs.java_version }}
-
     - name: Download artifact
       id: download
       uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
@@ -113,6 +97,51 @@ runs:
           });
           fs.mkdirSync(process.env.TARGET_DIR, { recursive: true });
           fs.writeFileSync(path.join(process.env.TARGET_DIR, 'sonar-data.zip'), Buffer.from(download.data));
+
+    # The merge SHA comes from the artifact, which is untrusted: it is strictly validated here, then
+    # verified against the PR head resolved from the GitHub API after the checkout.
+    - name: Read merge commit SHA from artifact
+      id: merge
+      env:
+        ARTIFACTS: ${{ runner.temp }}/artifacts
+      run: |
+        set -euo pipefail
+        MERGE_SHA=$(unzip -p "$ARTIFACTS/sonar-data.zip" merge-sha.txt | head -c 100 || true)
+        MERGE_SHA="${MERGE_SHA//[$'\t\r\n ']/}"
+        if [[ ! "$MERGE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+          echo "::error::Missing or invalid merge commit SHA in the artifact"
+          exit 1
+        fi
+        echo "sha=$MERGE_SHA" >> "$GITHUB_OUTPUT"
+      shell: bash
+
+    # No `repository:` input: the merge commit lives in the base repository (refs/pull/N/merge).
+    - name: Checkout sources
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        ref: ${{ steps.merge.outputs.sha }}
+        fetch-depth: 0
+        persist-credentials: false
+        allow-unsafe-pr-checkout: true # Needed to check out a PR from a fork
+
+    - name: Verify the checked out commit is the merge of the built PR head
+      env:
+        MERGE_SHA: ${{ steps.merge.outputs.sha }}
+        HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+      run: |
+        set -euo pipefail
+        [ "$(git rev-parse HEAD)" = "$MERGE_SHA" ] \
+          || { echo "::error::Unexpected checked out commit"; exit 1; }
+        [ "$(git rev-parse HEAD^2)" = "$HEAD_SHA" ] \
+          || { echo "::error::The merge commit does not have the PR head as second parent"; exit 1; }
+      shell: bash
+
+    # No Maven cache: nothing is built here, and the cache must not be shared with unprivileged builds.
+    - name: Set up JDK
+      uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+      with:
+        distribution: 'temurin'
+        java-version: ${{ inputs.java_version }}
 
     - name: Prepare Sonar analysis
       id: prepare

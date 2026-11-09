@@ -73,6 +73,7 @@ runs:
         STAGING: ${{ runner.temp }}/sonar-data
       run: |
         mkdir -p "$STAGING"
+        echo "$GITHUB_SHA" > "$STAGING/merge-sha.txt"
         find . -name node_modules -prune -o -type d \( -path '*/target/classes' -o -path '*/target/generated-sources' \) -print0 -prune \
           | xargs -0 -r cp -r --parents -t "$STAGING"
         if [ -d "$DIST_MODULE/target/dependency" ]; then

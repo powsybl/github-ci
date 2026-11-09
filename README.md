@@ -119,7 +119,9 @@ jobs:
 | `sonar_token`         | sonar  | ✅       | —                          | Sonar token                                                                                                                                                                                                                                     |
 
 #### Security model
-- The privileged job never builds or runs anything coming from the fork; the fork sources and the artifact are only read by the Sonar scanner.
+- The privileged job analyzes the exact merge commit (base + PR head) built by the unprivileged job. Its SHA is read
+  from the artifact, so it is strictly validated (40 hex characters) and verified: the commit is fetched from the base
+  repository, and its second parent must equal the PR head SHA resolved from the GitHub API.
 - PR number, branches and SHA come from the GitHub API/event, never from the artifact content.
 - Symlinks, `sonar-project.properties` and `.sonarcloud.properties` from the fork are removed; only expected build outputs (`target/classes`, `target/generated-sources`, `target/dependency`, aggregated Jacoco report) are taken from the artifact; unsafe paths are ignored.
 - No Maven cache in the privileged job; the artifact is deleted after the analysis.

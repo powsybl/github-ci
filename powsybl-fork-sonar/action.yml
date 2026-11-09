@@ -48,14 +48,23 @@ runs:
             repo: context.repo.repo,
             commit_sha: run.head_sha,
           });
-          const pr = prs.find(p => p.state === 'open'
+          // Several open PRs can share the same head commit (same branch, different bases): the triggering one is
+          // the one whose artifact was produced by this very run.
+          const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, {
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            run_id: run.id,
+          });
+          const candidates = prs.filter(p => p.state === 'open'
             && p.head.sha === run.head_sha
-            && p.head.repo && p.head.repo.full_name === run.head_repository.full_name);
-          if (!pr) {
-            core.setFailed("❌ No open PR found for " + run.head_sha);
+            && p.head.repo && p.head.repo.full_name === run.head_repository.full_name
+            && artifacts.some(a => a.name === `data-for-sonar-analysis-${p.number}`));
+          if (candidates.length !== 1) {
+            core.setFailed(`❌ Expected exactly one open PR with an artifact for ${run.head_sha}, found ${candidates.length}`);
             return;
           }
-          const safeRef = /^[A-Za-z0-9._\/-]+$/;
+          const pr = candidates[0];
+          const safeRef = /^[A-Za-z0-9._\/+@-]+$/;
           if (!safeRef.test(pr.head.ref) || !safeRef.test(pr.base.ref)) {
             core.setFailed("❌ Unexpected branch name");
             return;
@@ -114,6 +123,32 @@ runs:
         fi
         echo "sha=$MERGE_SHA" >> "$GITHUB_OUTPUT"
       shell: bash
+
+    # The artifact is untrusted: its merge SHA must be the one GitHub computed for this PR, and the PR head must
+    # still be the one that was built. Done before the checkout.
+    - name: Verify the merge commit against GitHub
+      uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+      env:
+        PR_NUMBER: ${{ steps.pr.outputs.number }}
+        HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+        MERGE_SHA: ${{ steps.merge.outputs.sha }}
+      with:
+        script: |
+          const params = { owner: context.repo.owner, repo: context.repo.repo, pull_number: Number(process.env.PR_NUMBER) };
+          let pr;
+          // merge_commit_sha is computed asynchronously: retry while GitHub is still checking mergeability
+          for (let i = 0; i < 6; i++) {
+            ({ data: pr } = await github.rest.pulls.get(params));
+            if (pr.mergeable !== null) break;
+            await new Promise(r => setTimeout(r, 5000));
+          }
+          if (pr.state !== 'open' || pr.head.sha !== process.env.HEAD_SHA) {
+            core.setFailed('❌ The PR changed since the build');
+            return;
+          }
+          if (pr.mergeable === null || !pr.merge_commit_sha || pr.merge_commit_sha !== process.env.MERGE_SHA) {
+            core.setFailed('❌ The merge commit of the artifact does not match the merge commit computed by GitHub');
+          }
 
     # No `repository:` input: the merge commit lives in the base repository (refs/pull/N/merge).
     - name: Checkout sources

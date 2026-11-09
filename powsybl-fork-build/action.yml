@@ -133,7 +133,7 @@ runs:
           fi
         done
         $FOUND || echo "::warning::Jacoco report not found in $DIST_MODULE/target/site"
-        if ! find "$STAGING" -type d -path '*/target/classes' | grep -q .; then
+        if [ -z "$(find "$STAGING" -type d -path '*/target/classes' -print -quit)" ]; then
           echo "::error::No compiled classes found"
           exit 1
         fi

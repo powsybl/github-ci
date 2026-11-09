@@ -136,6 +136,50 @@ runs:
           || { echo "::error::The merge commit does not have the PR head as second parent"; exit 1; }
       shell: bash
 
+    # Runs on every OS, before any directory change or file operation on working_directory / distribution_module.
+    # Each path component is checked from the workspace root: absolute paths, '..' and symlinks/junctions are rejected.
+    - name: Validate working directory
+      uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+      env:
+        WORKING_DIRECTORY: ${{ inputs.working_directory }}
+        DIST_MODULE: ${{ inputs.distribution_module }}
+      with:
+        script: |
+          const fs = require('fs');
+          const path = require('path');
+          const workspace = fs.realpathSync(process.env.GITHUB_WORKSPACE);
+          const check = (label, base, rel, mustExist) => {
+            if (rel === '' || path.isAbsolute(rel) || /^[A-Za-z]:/.test(rel) || rel.startsWith('/') || rel.startsWith('\\')) {
+              throw new Error(`${label} must be a non-empty relative path`);
+            }
+            let current = base;
+            for (const part of rel.split(/[\\/]+/)) {
+              if (part === '' || part === '.') continue;
+              if (part === '..') throw new Error(`${label} must not contain '..'`);
+              current = path.join(current, part);
+              let stat;
+              try {
+                stat = fs.lstatSync(current);
+              } catch (e) {
+                if (e.code === 'ENOENT' && !mustExist) return;
+                throw new Error(`${label}: cannot access '${part}'`);
+              }
+              if (stat.isSymbolicLink()) throw new Error(`${label} must not contain symbolic links ('${part}')`);
+              if (!stat.isDirectory()) throw new Error(`${label}: '${part}' is not a directory`);
+            }
+            const real = fs.realpathSync(current);
+            const relative = path.relative(workspace, real);
+            if (relative.startsWith('..') || path.isAbsolute(relative)) {
+              throw new Error(`${label} is outside of the workspace`);
+            }
+          };
+          try {
+            check('working_directory', workspace, process.env.WORKING_DIRECTORY, true);
+            check('distribution_module', path.join(workspace, process.env.WORKING_DIRECTORY), process.env.DIST_MODULE, false);
+          } catch (e) {
+            core.setFailed(`❌ ${e.message}`);
+          }
+
     # No Maven cache: nothing is built here, and the cache must not be shared with unprivileged builds.
     - name: Set up JDK
       uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0

@@ -64,7 +64,9 @@ runs:
             return;
           }
           const pr = candidates[0];
-          const safeRef = /^[A-Za-z0-9._\/+@-]+$/;
+          // Refs are interpolated inside double-quoted scanner arguments: reject only whitespace, control
+          // characters and the ones that can break out of the quotes or trigger expansion.
+          const safeRef = /^[^\s\x00-\x1f\x7f"'`$\\]+$/u;
           if (!safeRef.test(pr.head.ref) || !safeRef.test(pr.base.ref)) {
             core.setFailed("❌ Unexpected branch name");
             return;

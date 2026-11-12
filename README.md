@@ -56,7 +56,7 @@ with two composite actions.
 | `powsybl/github-ci/powsybl-fork-build` | `pull_request` | ❌      | ✅ (Maven build)        |
 | `powsybl/github-ci/powsybl-fork-sonar` | `workflow_run` | ✅      | ❌ (Sonar scanner only) |
 
-Pull requests from the same repository should use `setup-powsybl-dev`.
+Pull requests from the same repository should use `powsybl-dev`.
 
 #### 1. Build workflow (unprivileged)
 ```yaml

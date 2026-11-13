@@ -43,37 +43,26 @@ runs:
             core.setFailed("❌ This action is only for pull requests coming from forks");
             return;
           }
-          // listPullRequestsAssociatedWithCommit does not return PRs whose head commit only exists in a fork, so the
-          // candidate PR numbers are taken from the artifact names of this run, then verified against the API.
+          // pulls.list matches on the fork head label, so it also finds PRs whose head commit only exists in a fork
+          // (listPullRequestsAssociatedWithCommit does not). Several open PRs can share the same head branch and
+          // commit (different bases): the triggering one is the one whose artifact was produced by this very run.
+          const pulls = await github.paginate(github.rest.pulls.list, {
+            ...context.repo,
+            state: 'open',
+            head: `${run.head_repository.owner.login}:${run.head_branch}`,
+          });
           const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, {
             owner: context.repo.owner,
             repo: context.repo.repo,
             run_id: run.id,
           });
-          const numbers = [...new Set(artifacts
-            .map(a => /^data-for-sonar-analysis-(\d{1,9})$/.exec(a.name))
-            .filter(m => m)
-            .map(m => Number(m[1])))];
-          const candidates = [];
-          for (const number of numbers) {
-            let p;
-            try {
-              ({ data: p } = await github.rest.pulls.get({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: number,
-              }));
-            } catch (e) {
-              continue;
-            }
-            if (p.state === 'open'
-                && p.head.sha === run.head_sha
-                && p.head.repo && p.head.repo.full_name === run.head_repository.full_name) {
-              candidates.push(p);
-            }
-          }
+          const candidates = pulls.filter(pr =>
+            pr.head.sha === run.head_sha &&
+            pr.head.repo?.full_name === run.head_repository.full_name &&
+            artifacts.some(a => a.name === `data-for-sonar-analysis-${pr.number}`)
+          );
           if (candidates.length !== 1) {
-            core.setFailed(`❌ Expected exactly one open PR with an artifact for ${run.head_sha}, found ${candidates.length}`);
+            core.setFailed(`❌ Expected exactly one matching open PR with an artifact for ${run.head_sha}, found ${candidates.length}`);
             return;
           }
           const pr = candidates[0];

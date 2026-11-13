@@ -1,0 +1,285 @@
+name: "Setup Fork CI - Sonar analysis"
+description: "Run the Sonar analysis of a PR coming from a fork, from the data produced by powsybl-fork-build"
+
+# To be used in a workflow triggered by `workflow_run` (privileged: has access to secrets).
+# SECURITY: the code coming from the fork must NEVER be executed here (no Maven, no scripts of the PR).
+# Everything coming from the fork (sources, artifact) is treated as untrusted data.
+
+inputs:
+  sonar_projectKey:
+    required: true
+    description: The project key in sonar cloud
+  sonar_token:
+    required: true
+    description: Sonar token
+  distribution_module:
+    default: '.'
+    description: Module (relative to working_directory) where dependencies and the aggregated Jacoco report are regrouped (e.g. distribution-core). Keep the default '.' for a single-module project
+  working_directory:
+    default: '.'
+    description: Directory containing the Maven project (same value as in powsybl-fork-build)
+  java_version:
+    default: '21'
+    description: Java version used to run the scanner
+
+runs:
+  using: "composite"
+  steps:
+    - name: Resolve PR information
+      id: pr
+      uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+      with:
+        script: |
+          const run = context.payload.workflow_run;
+          if (!run) {
+            core.setFailed("❌ This action must be used in a workflow triggered by workflow_run");
+            return;
+          }
+          if (run.event !== 'pull_request' || run.conclusion !== 'success') {
+            core.setFailed(`❌ Unexpected triggering run (event=${run.event}, conclusion=${run.conclusion})`);
+            return;
+          }
+          if (!run.head_repository || run.head_repository.full_name === `${context.repo.owner}/${context.repo.repo}`) {
+            core.setFailed("❌ This action is only for pull requests coming from forks");
+            return;
+          }
+          // pulls.list matches on the fork head label, so it also finds PRs whose head commit only exists in a fork
+          // (listPullRequestsAssociatedWithCommit does not). Several open PRs can share the same head branch and
+          // commit (different bases): the triggering one is the one whose artifact was produced by this very run.
+          const pulls = await github.paginate(github.rest.pulls.list, {
+            ...context.repo,
+            state: 'open',
+            head: `${run.head_repository.owner.login}:${run.head_branch}`,
+          });
+          const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, {
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            run_id: run.id,
+          });
+          const candidates = pulls.filter(pr =>
+            pr.head.sha === run.head_sha &&
+            pr.head.repo?.full_name === run.head_repository.full_name &&
+            artifacts.some(a => a.name === `data-for-sonar-analysis-${pr.number}`)
+          );
+          if (candidates.length !== 1) {
+            core.setFailed(`❌ Expected exactly one matching open PR with an artifact for ${run.head_sha}, found ${candidates.length}`);
+            return;
+          }
+          const pr = candidates[0];
+          // Refs are interpolated inside double-quoted scanner arguments: reject only whitespace, control
+          // characters and the ones that can break out of the quotes or trigger expansion.
+          const safeRef = /^[^\s\x00-\x1f\x7f"'`$\\]+$/u;
+          if (!safeRef.test(pr.head.ref) || !safeRef.test(pr.base.ref)) {
+            core.setFailed("❌ Unexpected branch name");
+            return;
+          }
+          core.setOutput('number', String(pr.number));
+          core.setOutput('head_ref', pr.head.ref);
+          core.setOutput('base_ref', pr.base.ref);
+          core.setOutput('head_sha', run.head_sha);
+          core.setOutput('head_repo', run.head_repository.full_name);
+
+    - name: Download artifact
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      with:
+        name: data-for-sonar-analysis-${{ steps.pr.outputs.number }}
+        path: ${{ runner.temp }}/artifacts
+        run-id: ${{ github.event.workflow_run.id }}
+        github-token: ${{ github.token }}
+
+    # The merge SHA comes from the artifact, which is untrusted: it is strictly validated here, then
+    # verified against the PR head resolved from the GitHub API after the checkout.
+    - name: Read merge commit SHA from artifact
+      id: merge
+      env:
+        ARTIFACTS: ${{ runner.temp }}/artifacts
+      run: |
+        set -euo pipefail
+        MERGE_FILE="$ARTIFACTS/merge-sha.txt"
+        if [ ! -f "$MERGE_FILE" ] || [ -L "$MERGE_FILE" ]; then
+          echo "::error::Missing merge-sha.txt in the artifact"
+          exit 1
+        fi
+        MERGE_SHA=$(head -c 100 "$MERGE_FILE" || true)
+        MERGE_SHA="${MERGE_SHA//[$'\t\r\n ']/}"
+        if [[ ! "$MERGE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+          echo "::error::Missing or invalid merge commit SHA in the artifact"
+          exit 1
+        fi
+        echo "sha=$MERGE_SHA" >> "$GITHUB_OUTPUT"
+      shell: bash
+
+    # The artifact is untrusted: its merge SHA must be the one GitHub computed for this PR, and the PR head must
+    # still be the one that was built. Done before the checkout.
+    - name: Verify the merge commit against GitHub
+      uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+      env:
+        PR_NUMBER: ${{ steps.pr.outputs.number }}
+        HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+        MERGE_SHA: ${{ steps.merge.outputs.sha }}
+      with:
+        script: |
+          const params = { owner: context.repo.owner, repo: context.repo.repo, pull_number: Number(process.env.PR_NUMBER) };
+          let pr;
+          // merge_commit_sha is computed asynchronously: retry while GitHub is still checking mergeability
+          for (let i = 0; i < 6; i++) {
+            ({ data: pr } = await github.rest.pulls.get(params));
+            if (pr.mergeable !== null) break;
+            await new Promise(r => setTimeout(r, 5000));
+          }
+          if (pr.state !== 'open' || pr.head.sha !== process.env.HEAD_SHA) {
+            core.setFailed('❌ The PR changed since the build');
+            return;
+          }
+          if (pr.mergeable === null || !pr.merge_commit_sha || pr.merge_commit_sha !== process.env.MERGE_SHA) {
+            core.setFailed('❌ The merge commit of the artifact does not match the merge commit computed by GitHub');
+          }
+
+    # No `repository:` input: the merge commit lives in the base repository (refs/pull/N/merge).
+    - name: Checkout sources
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        ref: ${{ steps.merge.outputs.sha }}
+        fetch-depth: 0
+        persist-credentials: false
+        allow-unsafe-pr-checkout: true # Needed to check out a PR from a fork
+
+    - name: Verify the checked out commit is the merge of the built PR head
+      env:
+        MERGE_SHA: ${{ steps.merge.outputs.sha }}
+        HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+      run: |
+        set -euo pipefail
+        [ "$(git rev-parse HEAD)" = "$MERGE_SHA" ] \
+          || { echo "::error::Unexpected checked out commit"; exit 1; }
+        [ "$(git rev-parse HEAD^2)" = "$HEAD_SHA" ] \
+          || { echo "::error::The merge commit does not have the PR head as second parent"; exit 1; }
+      shell: bash
+
+    # Runs on every OS, before any directory change or file operation on working_directory / distribution_module.
+    # Each path component is checked from the workspace root: absolute paths, '..' and symlinks/junctions are rejected.
+    - name: Validate working directory
+      shell: bash
+      env:
+        WORKING_DIRECTORY: ${{ inputs.working_directory }}
+        DIST_MODULE: ${{ inputs.distribution_module }}
+      run: node "${{ github.action_path }}/../scripts/validate-working-directory.js"
+
+    # No Maven cache: nothing is built here, and the cache must not be shared with unprivileged builds.
+    - name: Set up JDK
+      uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+      with:
+        distribution: 'temurin'
+        java-version: ${{ inputs.java_version }}
+
+    - name: Prepare Sonar analysis
+      id: prepare
+      working-directory: ${{ inputs.working_directory }}
+      env:
+        DIST_MODULE: ${{ inputs.distribution_module }}
+        EXTRACTED: ${{ runner.temp }}/artifacts
+      run: |
+        set -euo pipefail
+        SAFE='^[A-Za-z0-9._/+@-]+$'
+        find . -not -path './.git/*' -type l -delete
+        find . \( -name 'sonar-project.properties' -o -name '.sonarcloud.properties' \) -type f -delete
+        find "$EXTRACTED" -type l -delete
+        find "$EXTRACTED" -type f -not \( -path '*/target/classes/*' -o -path '*/target/generated-sources/*' \
+          -o -path '*/target/dependency/*' -o -path '*/target/site/jacoco-aggregate/jacoco.xml' \
+          -o -path '*/target/site/jacoco/jacoco.xml' \) -delete
+        PROJECT_DIR="$PWD"
+        (cd "$EXTRACTED" && find . -type f -print0 | xargs -0 -r cp --parents -t "$PROJECT_DIR")
+        list() {
+          local out="" d
+          while IFS= read -r -d '' d; do
+            d="${d#./}"
+            if [[ "$d" =~ $SAFE ]]; then
+              out+="${out:+,}$d"
+            else
+              echo "::warning::Ignoring unsafe path" >&2
+            fi
+          done < <(find . -name node_modules -prune -o -type d "$@" -print0 | sort -zu)
+          echo "$out"
+        }
+        SOURCES=$(list -path '*/main/java' -not -path '*/target/*')
+        GENERATED=$(list -path '*/target/generated-sources')
+        TESTS=$(list -path '*/test/java' -not -path '*/target/*')
+        BINARIES=$(list -path '*/target/classes')
+        [ -n "$SOURCES" ] || { echo "::error::No source directories found"; exit 1; }
+        [ -n "$BINARIES" ] || { echo "::error::No binaries directories found"; exit 1; }
+        LIBRARIES=""
+        if [ -d "$DIST_MODULE/target/dependency" ] && [[ "$DIST_MODULE/target/dependency" =~ $SAFE ]]; then
+          LIBRARIES="$DIST_MODULE/target/dependency/*.jar"
+        else
+          echo "::warning::Libraries directory not found"
+        fi
+        JACOCO=""
+        if [[ "$DIST_MODULE" =~ $SAFE ]]; then
+          for CANDIDATE in "$DIST_MODULE/target/site/jacoco-aggregate/jacoco.xml" "$DIST_MODULE/target/site/jacoco/jacoco.xml"; do
+            if [ -f "$CANDIDATE" ]; then
+              JACOCO="$CANDIDATE"
+              break
+            fi
+          done
+        fi
+        [ -n "$JACOCO" ] || echo "::warning::Jacoco report not found"
+        {
+          echo "sources=$SOURCES"
+          echo "generated=$GENERATED"
+          echo "tests=$TESTS"
+          echo "binaries=$BINARIES"
+          echo "libraries=$LIBRARIES"
+          echo "jacoco=$JACOCO"
+        } >> "$GITHUB_OUTPUT"
+      shell: bash
+
+    # This sonar action should NOT be replaced by a direct use of the mvn verify command since we don't want external
+    # code to run in a workflow_run workflow (it may lead to security issues).
+    # All interpolated values below are either validated (paths, refs) or resolved from the GitHub API (PR data).
+    - name: Run Sonar Analysis
+      uses: SonarSource/sonarqube-scan-action@e805d875275f728fac1885b413934be6d7c63f65 # v8.4.1
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        SONAR_TOKEN: ${{ inputs.sonar_token }}
+      with:
+        projectBaseDir: ${{ inputs.working_directory }}
+        args: >
+          "-Dsonar.projectKey=${{ inputs.sonar_projectKey }}"
+          -Dsonar.organization=powsybl-ci-github
+          "-Dsonar.sources=${{ steps.prepare.outputs.sources }}"
+          "-Dsonar.generatedSources=${{ steps.prepare.outputs.generated }}"
+          "-Dsonar.tests=${{ steps.prepare.outputs.tests }}"
+          "-Dsonar.java.binaries=${{ steps.prepare.outputs.binaries }}"
+          "-Dsonar.java.libraries=${{ steps.prepare.outputs.libraries }}"
+          "-Dsonar.java.test.libraries=${{ steps.prepare.outputs.libraries }}"
+          "-Dsonar.coverage.jacoco.xmlReportPaths=${{ steps.prepare.outputs.jacoco }}"
+          "-Dsonar.pullrequest.key=${{ steps.pr.outputs.number }}"
+          "-Dsonar.pullrequest.branch=${{ steps.pr.outputs.head_ref }}"
+          "-Dsonar.pullrequest.base=${{ steps.pr.outputs.base_ref }}"
+          -Dsonar.pullrequest.provider=github
+          -Dsonar.pullrequest.github.repository=${{ github.repository }}
+          -Dsonar.host.url=https://sonarcloud.io
+          -Dsonar.scm.provider=git
+          -Dsonar.qualitygate.wait=true
+          -Dsonar.scm.revision=${{ steps.pr.outputs.head_sha }}
+
+    - name: Delete artifact used in analysis
+      if: always() && steps.download.outputs.name != ''
+      uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+      env:
+        ARTIFACT_NAME: data-for-sonar-analysis-${{ steps.pr.outputs.number }}
+      with:
+        script: |
+          const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, {
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            run_id: context.payload.workflow_run.id,
+          });
+          for (const artifact of artifacts.filter(a => a.name === process.env.ARTIFACT_NAME)) {
+            console.log(`Deleting artifact: ${artifact.name} (ID: ${artifact.id})`);
+            await github.rest.actions.deleteArtifact({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              artifact_id: artifact.id
+            });
+          }

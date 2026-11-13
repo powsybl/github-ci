@@ -35,21 +35,21 @@ runs:
         cache: 'maven'
 
     - name: Build with Maven (Ubuntu)
-      if: matrix.os == 'ubuntu-latest'
+      if: runner.os == 'Linux'
       run: ./mvnw $RUNGHA_MAVEN_ARGS
       env:
         RUNGHA_MAVEN_ARGS: ${{ inputs.maven_args_ubuntu }}
       shell: bash
 
     - name: Build with Maven (Windows)
-      if: matrix.os == 'windows-latest'
+      if: runner.os == 'Windows'
       run: ./mvnw.cmd ($env:RUNGHA_MAVEN_ARGS -split '\s+')
       env:
         RUNGHA_MAVEN_ARGS: ${{ inputs.maven_args_windows }}
       shell: pwsh
 
     - name: Build with Maven (MacOS)
-      if: matrix.os == 'macos-latest'
+      if: runner.os == 'macOS'
       run: ./mvnw $RUNGHA_MAVEN_ARGS
       env:
         RUNGHA_MAVEN_ARGS: ${{ inputs.maven_args_macos }}

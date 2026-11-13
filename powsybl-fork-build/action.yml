@@ -1,0 +1,119 @@
+name: "Setup Fork CI - build and tests"
+description: "Build and test a PR coming from a fork (unprivileged, no secrets) and stage the data needed by the Sonar analysis"
+
+# To be used in a workflow triggered by `pull_request` (NOT `pull_request_target`), restricted to forks.
+# The code of the PR is executed here: this job must never have access to any secret.
+
+inputs:
+  maven_args_ubuntu:
+    default: '-B -ntp -Pjacoco install'
+    description: Maven arguments on Ubuntu
+  maven_args_windows:
+    default: '-B -ntp verify'
+    description: Maven arguments on Windows
+  maven_args_macos:
+    default: '-B -ntp verify'
+    description: Maven arguments on macOS
+  distribution_module:
+    default: '.'
+    description: Module (relative to working_directory) where dependencies and the aggregated Jacoco report are regrouped (e.g. distribution-core). Keep the default '.' for a single-module project
+  working_directory:
+    default: '.'
+    description: Directory containing the Maven project (e.g. for repositories where the Java part is in a sub directory)
+  java_version:
+    default: '21'
+    description: Java version used for the build
+
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout sources
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+        fetch-depth: 0
+
+    # Runs on every OS, before any directory change or file operation on working_directory / distribution_module.
+    # Each path component is checked from the workspace root: absolute paths, '..' and symlinks/junctions are rejected.
+    - name: Validate working directory
+      shell: bash
+      env:
+        WORKING_DIRECTORY: ${{ inputs.working_directory }}
+        DIST_MODULE: ${{ inputs.distribution_module }}
+      run: node "${{ github.action_path }}/../scripts/validate-working-directory.js"
+
+    - name: Set up JDK
+      uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+      with:
+        distribution: 'temurin'
+        java-version: ${{ inputs.java_version }}
+        cache: 'maven'
+
+    - name: Build with Maven (Linux)
+      if: runner.os == 'Linux'
+      working-directory: ${{ inputs.working_directory }}
+      run: ./mvnw $RUNGHA_MAVEN_ARGS
+      env:
+        RUNGHA_MAVEN_ARGS: ${{ inputs.maven_args_ubuntu }}
+      shell: bash
+
+    - name: Build with Maven (Windows)
+      if: runner.os == 'Windows'
+      working-directory: ${{ inputs.working_directory }}
+      run: ./mvnw.cmd ($env:RUNGHA_MAVEN_ARGS -split '\s+')
+      env:
+        RUNGHA_MAVEN_ARGS: ${{ inputs.maven_args_windows }}
+      shell: pwsh
+
+    - name: Build with Maven (macOS)
+      if: runner.os == 'macOS'
+      working-directory: ${{ inputs.working_directory }}
+      run: ./mvnw $RUNGHA_MAVEN_ARGS
+      env:
+        RUNGHA_MAVEN_ARGS: ${{ inputs.maven_args_macos }}
+      shell: bash
+
+    - name: Regroup dependencies in target folders
+      if: runner.os == 'Linux'
+      run: ./mvnw dependency:copy-dependencies
+      shell: bash
+
+    # Only the files needed by the Sonar analysis are staged, with paths relative to working_directory.
+    - name: Stage data for Sonar analysis
+      if: runner.os == 'Linux'
+      working-directory: ${{ inputs.working_directory }}
+      env:
+        DIST_MODULE: ${{ inputs.distribution_module }}
+        STAGING: ${{ runner.temp }}/sonar-data
+      run: |
+        mkdir -p "$STAGING"
+        echo "$GITHUB_SHA" > "$STAGING/merge-sha.txt"
+        find . -name node_modules -prune -o -type d \( -path '*/target/classes' -o -path '*/target/generated-sources' \) -print0 -prune \
+          | xargs -0 -r cp -r --parents -t "$STAGING"
+        if [ -d "$DIST_MODULE/target/dependency" ]; then
+          cp -r --parents "$DIST_MODULE/target/dependency" -t "$STAGING"
+        else
+          echo "::warning::$DIST_MODULE/target/dependency not found"
+        fi
+        FOUND=false
+        for JACOCO in "$DIST_MODULE/target/site/jacoco-aggregate/jacoco.xml" "$DIST_MODULE/target/site/jacoco/jacoco.xml"; do
+          if [ -f "$JACOCO" ]; then
+            cp --parents "$JACOCO" -t "$STAGING"
+            FOUND=true
+          fi
+        done
+        $FOUND || echo "::warning::Jacoco report not found in $DIST_MODULE/target/site"
+        if [ -z "$(find "$STAGING" -type d -path '*/target/classes' -print -quit)" ]; then
+          echo "::error::No compiled classes found"
+          exit 1
+        fi
+      shell: bash
+
+    - name: Upload data for Sonar analysis
+      if: runner.os == 'Linux'
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # 7.0.0
+      with:
+        name: data-for-sonar-analysis-${{ github.event.pull_request.number }}
+        retention-days: 1
+        if-no-files-found: error
+        path: ${{ runner.temp }}/sonar-data

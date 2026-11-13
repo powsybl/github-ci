@@ -80,36 +80,12 @@ runs:
           core.setOutput('head_repo', run.head_repository.full_name);
 
     - name: Download artifact
-      id: download
-      uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
-      env:
-        PR_NUMBER: ${{ steps.pr.outputs.number }}
-        TARGET_DIR: ${{ runner.temp }}/artifacts
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
       with:
-        script: |
-          const fs = require('fs');
-          const path = require('path');
-          // The name is built from the PR number resolved above, not parsed from untrusted data.
-          const name = `data-for-sonar-analysis-${process.env.PR_NUMBER}`;
-          const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, {
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            run_id: context.payload.workflow_run.id,
-          });
-          const matchArtifact = artifacts.find(a => a.name === name);
-          if (!matchArtifact) {
-            core.setFailed(`❌ Artifact ${name} not found`);
-            return;
-          }
-          core.setOutput('name', name);
-          const download = await github.rest.actions.downloadArtifact({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            artifact_id: matchArtifact.id,
-            archive_format: 'zip',
-          });
-          fs.mkdirSync(process.env.TARGET_DIR, { recursive: true });
-          fs.writeFileSync(path.join(process.env.TARGET_DIR, 'sonar-data.zip'), Buffer.from(download.data));
+        name: data-for-sonar-analysis-${{ steps.pr.outputs.number }}
+        path: ${{ runner.temp }}/artifacts
+        run-id: ${{ github.event.workflow_run.id }}
+        github-token: ${{ github.token }}
 
     # The merge SHA comes from the artifact, which is untrusted: it is strictly validated here, then
     # verified against the PR head resolved from the GitHub API after the checkout.
@@ -119,7 +95,12 @@ runs:
         ARTIFACTS: ${{ runner.temp }}/artifacts
       run: |
         set -euo pipefail
-        MERGE_SHA=$(unzip -p "$ARTIFACTS/sonar-data.zip" merge-sha.txt | head -c 100 || true)
+        MERGE_FILE="$ARTIFACTS/merge-sha.txt"
+        if [ ! -f "$MERGE_FILE" ] || [ -L "$MERGE_FILE" ]; then
+          echo "::error::Missing merge-sha.txt in the artifact"
+          exit 1
+        fi
+        MERGE_SHA=$(head -c 100 "$MERGE_FILE" || true)
         MERGE_SHA="${MERGE_SHA//[$'\t\r\n ']/}"
         if [[ ! "$MERGE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
           echo "::error::Missing or invalid merge commit SHA in the artifact"
@@ -196,15 +177,12 @@ runs:
       working-directory: ${{ inputs.working_directory }}
       env:
         DIST_MODULE: ${{ inputs.distribution_module }}
-        ARTIFACTS: ${{ runner.temp }}/artifacts
-        EXTRACTED: ${{ runner.temp }}/extracted
+        EXTRACTED: ${{ runner.temp }}/artifacts
       run: |
         set -euo pipefail
         SAFE='^[A-Za-z0-9._/+@-]+$'
         find . -not -path './.git/*' -type l -delete
         find . \( -name 'sonar-project.properties' -o -name '.sonarcloud.properties' \) -type f -delete
-        mkdir -p "$EXTRACTED"
-        unzip -q "$ARTIFACTS/sonar-data.zip" -d "$EXTRACTED"
         find "$EXTRACTED" -type l -delete
         find "$EXTRACTED" -type f -not \( -path '*/target/classes/*' -o -path '*/target/generated-sources/*' \
           -o -path '*/target/dependency/*' -o -path '*/target/site/jacoco-aggregate/jacoco.xml' \
@@ -289,7 +267,7 @@ runs:
       if: always() && steps.download.outputs.name != ''
       uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
       env:
-        ARTIFACT_NAME: ${{ steps.download.outputs.name }}
+        ARTIFACT_NAME: data-for-sonar-analysis-${{ steps.pr.outputs.number }}
       with:
         script: |
           const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, {

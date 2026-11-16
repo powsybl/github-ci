@@ -40,7 +40,7 @@ jobs:
 | `maven_args_ubuntu`  | ❌       | `-B -ntp -Pjacoco install` | Maven arguments on Ubuntu  |
 | `maven_args_windows` | ❌       | `-B -ntp verify`           | Maven arguments on Windows |
 | `maven_args_macos`   | ❌       | `-B -ntp verify`           | Maven arguments on macOS   |
-| `use_mvnw`           | ❌       | `true`                     | Use the Maven wrapper (mvnw) if it exists in `working_directory`, otherwise use the system Maven (mvn)|
+| `use_mvnw`           | ❌       | `true`                     | Use the Maven wrapper (mvnw) if available, otherwise use the system Maven (mvn)|
 
 #### Requirements
 

@@ -17,6 +17,9 @@ inputs:
   maven_args_macos:
     default: '-B -ntp verify'
     description: Maven arguments on macOS
+  use_mvnw:
+    default: "true"
+    description: Use the Maven wrapper (mvnw) if available, otherwise use the system Maven (mvn)
 
 runs:
   using: "composite"
@@ -34,35 +37,46 @@ runs:
         java-version: '21'
         cache: 'maven'
 
+    - name: Resolve Maven command
+      id: maven
+      shell: bash
+      env:
+        USE_MVNW: ${{ inputs.use_mvnw }}
+      run: node "${{ github.action_path }}/../scripts/resolve-maven-command.js"
+
     - name: Build with Maven (Ubuntu)
       if: runner.os == 'Linux'
-      run: ./mvnw $RUNGHA_MAVEN_ARGS
+      run: $RUNGHA_MAVEN_CMD $RUNGHA_MAVEN_ARGS
       env:
+        RUNGHA_MAVEN_CMD: ${{ steps.maven.outputs.cmd }}
         RUNGHA_MAVEN_ARGS: ${{ inputs.maven_args_ubuntu }}
       shell: bash
 
     - name: Build with Maven (Windows)
       if: runner.os == 'Windows'
-      run: ./mvnw.cmd ($env:RUNGHA_MAVEN_ARGS -split '\s+')
+      run: & $env:RUNGHA_MAVEN_CMD ($env:RUNGHA_MAVEN_ARGS -split '\s+')
       env:
+        RUNGHA_MAVEN_CMD: ${{ steps.maven.outputs.cmd }}
         RUNGHA_MAVEN_ARGS: ${{ inputs.maven_args_windows }}
       shell: pwsh
 
     - name: Build with Maven (MacOS)
       if: runner.os == 'macOS'
-      run: ./mvnw $RUNGHA_MAVEN_ARGS
+      run: $RUNGHA_MAVEN_CMD $RUNGHA_MAVEN_ARGS
       env:
+        RUNGHA_MAVEN_CMD: ${{ steps.maven.outputs.cmd }}
         RUNGHA_MAVEN_ARGS: ${{ inputs.maven_args_macos }}
       shell: bash
 
     - name: Run SonarCloud analysis
-      if: matrix.os == 'ubuntu-latest'
+      if: runner.os == 'Linux'
       run: >
-        ./mvnw -B -ntp -DskipTests sonar:sonar
+        $RUNGHA_MAVEN_CMD -B -ntp -DskipTests sonar:sonar
         -Dsonar.host.url=https://sonarcloud.io
         -Dsonar.organization=powsybl-ci-github
         "-Dsonar.projectKey=$RUNGHA_SONAR_PROJECT_KEY"
       env:
+        RUNGHA_MAVEN_CMD: ${{ steps.maven.outputs.cmd }}
         RUNGHA_SONAR_PROJECT_KEY: ${{ inputs.sonar_projectKey }}
         SONAR_TOKEN: ${{ inputs.sonar_token }}
       shell: bash

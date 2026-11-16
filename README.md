@@ -12,7 +12,7 @@ This action shall only be used for pull requests from the same repository. Pull 
 #### What it does 
 - Checkout the project sources
 - Setup Java with Maven cache
-- Build and test using Maven (`./mvnw` or `mvnw.cmd` depending on OS)
+- Build and test using Maven
 - Run the SonarCloud analysis.
 
 #### Usage
@@ -40,11 +40,12 @@ jobs:
 | `maven_args_ubuntu`  | ❌       | `-B -ntp -Pjacoco install` | Maven arguments on Ubuntu  |
 | `maven_args_windows` | ❌       | `-B -ntp verify`           | Maven arguments on Windows |
 | `maven_args_macos`   | ❌       | `-B -ntp verify`           | Maven arguments on macOS   |
+| `use_mvnw`           | ❌       | `true`                     | Use the Maven wrapper (mvnw) if it exists in `working_directory`, otherwise use the system Maven (mvn)|
 
 #### Requirements
 
-- The calling job must use a matrix with running os, with at least `ubuntu-latest`.
-- Supported OS: `ubuntu-latest` | `windows-latest` | `macos-latest`
+- The calling job must at least run on `Linux` as the Sonar analysis requires Linux.
+- Supported OS: `Linux` | `Windows` | `macOS`
 
 
 ### Fork CI ⚡ (pull requests coming from forks)
@@ -57,6 +58,30 @@ with two composite actions.
 | `powsybl/github-ci/powsybl-fork-sonar` | `workflow_run` | ✅      | ❌ (Sonar scanner only) |
 
 Pull requests from the same repository should use `powsybl-dev`.
+
+#### What it does
+
+The first and unprivileged action:
+- Checks out the project sources
+- Sets up Java with Maven cache
+- Builds and tests using Maven
+- Regroups the build outputs, Jacoco report, and the dependencies in a single artifact.
+
+The second and privileged action:
+- Downloads the artifact produced by the first action
+- Checks out the project sources, and verifies that the merge commit matches the PR head
+- Sets up Java
+- Runs the SonarCloud analysis.
+- Deletes the artifact once the analysis is done.
+
+#### Requirements
+
+For the first and unprivileged action:
+- The calling job must at least run on `Linux` as the Sonar analysis will require Linux.
+- Supported OS: `Linux` | `Windows` | `macOS`
+
+For the second and privileged action:
+- The calling job must only run on `Linux` as the Sonar analysis requires Linux
 
 #### 1. Build workflow (unprivileged)
 ```yaml
@@ -115,6 +140,7 @@ jobs:
 | `maven_args_ubuntu`   | build  | ❌       | `-B -ntp -Pjacoco install` | Maven arguments on Ubuntu                                                                                                                                                                                                                       |
 | `maven_args_windows`  | build  | ❌       | `-B -ntp verify`           | Maven arguments on Windows                                                                                                                                                                                                                      |
 | `maven_args_macos`    | build  | ❌       | `-B -ntp verify`           | Maven arguments on macOS                                                                                                                                                                                                                        |
+| `use_mvnw`           | build   | ❌       | `true`                     | Use the Maven wrapper (mvnw) if it exists in `working_directory`, otherwise use the system Maven (mvn) |
 | `sonar_projectKey`    | sonar  | ✅       | —                          | SonarCloud project key                                                                                                                                                                                                                          |
 | `sonar_token`         | sonar  | ✅       | —                          | Sonar token                                                                                                                                                                                                                                     |
 

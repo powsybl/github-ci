@@ -42,6 +42,12 @@ jobs:
 | `maven_args_macos`   | ❌       | `-B -ntp verify`           | Maven arguments on macOS   |
 | `use_mvnw`           | ❌       | `true`                     | Use the Maven wrapper (mvnw) if available, otherwise use the system Maven (mvn)|
 
+#### Outputs
+
+| Output     | Description      |
+|------------|-----------------|
+| `mvn_cmd`  | Resolved Maven command |
+
 #### Requirements
 
 - The calling job must at least run on `Linux` as the Sonar analysis requires Linux.
@@ -143,6 +149,12 @@ jobs:
 | `use_mvnw`           | build   | ❌       | `true`                     | Use the Maven wrapper (mvnw) if it exists in `working_directory`, otherwise use the system Maven (mvn) |
 | `sonar_projectKey`    | sonar  | ✅       | —                          | SonarCloud project key                                                                                                                                                                                                                          |
 | `sonar_token`         | sonar  | ✅       | —                          | Sonar token                                                                                                                                                                                                                                     |
+
+#### Outputs
+
+| Output     | Action | Description      |
+|------------|--------|-----------------|
+| `mvn_cmd`  | build   | Resolved Maven command |
 
 #### Security model
 - The privileged job analyzes the exact merge commit (base + PR head) built by the unprivileged job. Its SHA is read

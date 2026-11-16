@@ -26,6 +26,10 @@ inputs:
   use_mvnw:
     default: "true"
     description: Use the Maven wrapper (mvnw) if available, otherwise use the system Maven (mvn)
+outputs:
+  mvn_cmd:
+    description: "Resolved Maven command"
+    value: ${{ steps.maven.outputs.cmd }}
 
 runs:
   using: "composite"

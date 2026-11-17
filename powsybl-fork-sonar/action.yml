@@ -264,7 +264,7 @@ runs:
           -Dsonar.scm.revision=${{ steps.pr.outputs.head_sha }}
 
     - name: Delete artifact used in analysis
-      if: always() && steps.download.outputs.name != ''
+      if: always() && steps.pr.outputs.number != ''
       uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
       env:
         ARTIFACT_NAME: data-for-sonar-analysis-${{ steps.pr.outputs.number }}

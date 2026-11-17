@@ -23,6 +23,13 @@ inputs:
   java_version:
     default: '21'
     description: Java version used for the build
+  use_mvnw:
+    default: "true"
+    description: Use the Maven wrapper (mvnw) if available, otherwise use the system Maven (mvn)
+outputs:
+  mvn_cmd:
+    description: "Resolved Maven command"
+    value: ${{ steps.maven.outputs.cmd }}
 
 runs:
   using: "composite"
@@ -49,33 +56,48 @@ runs:
         java-version: ${{ inputs.java_version }}
         cache: 'maven'
 
+    - name: Resolve Maven command
+      id: maven
+      shell: bash
+      env:
+        USE_MVNW: ${{ inputs.use_mvnw }}
+        WORKING_DIRECTORY: ${{ inputs.working_directory }}
+      run: node "${{ github.action_path }}/../scripts/resolve-maven-command.js"
+
     - name: Build with Maven (Linux)
       if: runner.os == 'Linux'
       working-directory: ${{ inputs.working_directory }}
-      run: ./mvnw $RUNGHA_MAVEN_ARGS
+      run: $RUNGHA_MAVEN_CMD $RUNGHA_MAVEN_ARGS
       env:
         RUNGHA_MAVEN_ARGS: ${{ inputs.maven_args_ubuntu }}
+        RUNGHA_MAVEN_CMD: ${{ steps.maven.outputs.cmd }}
       shell: bash
 
     - name: Build with Maven (Windows)
       if: runner.os == 'Windows'
       working-directory: ${{ inputs.working_directory }}
-      run: ./mvnw.cmd ($env:RUNGHA_MAVEN_ARGS -split '\s+')
+      run: |
+        & $env:RUNGHA_MAVEN_CMD ($env:RUNGHA_MAVEN_ARGS -split '\s+')
       env:
         RUNGHA_MAVEN_ARGS: ${{ inputs.maven_args_windows }}
+        RUNGHA_MAVEN_CMD: ${{ steps.maven.outputs.cmd }}
       shell: pwsh
 
     - name: Build with Maven (macOS)
       if: runner.os == 'macOS'
       working-directory: ${{ inputs.working_directory }}
-      run: ./mvnw $RUNGHA_MAVEN_ARGS
+      run: $RUNGHA_MAVEN_CMD $RUNGHA_MAVEN_ARGS
       env:
         RUNGHA_MAVEN_ARGS: ${{ inputs.maven_args_macos }}
+        RUNGHA_MAVEN_CMD: ${{ steps.maven.outputs.cmd }}
       shell: bash
 
     - name: Regroup dependencies in target folders
       if: runner.os == 'Linux'
-      run: ./mvnw dependency:copy-dependencies
+      working-directory: ${{ inputs.working_directory }}
+      run: $RUNGHA_MAVEN_CMD dependency:copy-dependencies
+      env:
+        RUNGHA_MAVEN_CMD: ${{ steps.maven.outputs.cmd }}
       shell: bash
 
     # Only the files needed by the Sonar analysis are staged, with paths relative to working_directory.

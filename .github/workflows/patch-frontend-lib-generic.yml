@@ -1,0 +1,249 @@
+
+name: patch-frontend-lib-generic.yml
+on:
+  workflow_call:
+    inputs:
+      githubappId:
+        description: 'GitHub App ID for authentication'
+        required: true
+        type: string
+      patchBranch:
+        description: 'Patch branch (format: patch-vX.Y.Z)'
+        required: true
+        type: string
+      environment:
+        required: false
+        default: 'release'
+        type: string
+      nodeAuthToken:
+        description: 'NPM access token (required if Trusted Publisher is not configured on npmjs.com for this project)'
+        required: false
+        type: string
+    secrets:
+      VERSIONBUMP_GHAPP_PRIVATE_KEY:
+        required: true
+      sonar-token:
+        required: true
+
+permissions:
+  # Permissions needed for creating a github release (gh release create)
+  # Note: Using broader write permissions as there's no more granular permission specifically for releases operations.
+  contents: write
+  # permission for npm error Provenance generation in GitHub Actions requires "write" access to the "id-token" permission
+  id-token: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment }}
+    steps:
+      # don't allow to disable this check, and for security only succeed if everything goes perfectly and outputs "true"
+      # TODO deduplicate this code when github actions allows to easily share a script used
+      # by reusable workflows. Currently only the workflow file is checked out at the caller
+      # There are no good workarounds to checkout a companion file (script or composite action)
+      - name: Check Actor Permission
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "checking permission=maintain on repo=$GITHUB_REPOSITORY for user=$GITHUB_ACTOR"
+          # no need to escape GITHUB_REPOSITORY and GITHUB_ACTOR because github
+          # names can only contain ASCII letters, digits, and the characters ., # -, and _.
+          # permission: legacy, is actually a role (one per user) and doesn't
+          #   have "maintain" role, only ["none", "read", "write", "admin"]
+          # role_name: one per user, new standard roles, custom roles, "" and
+          #   "push" and "pull" instead of "none" and "read" and "write": "",
+          #   "read", "triage", "write", "maintain", "admin" and also non
+          #   standard custom roles
+          # user.permissions: boolean status only for each standard permissions "pull", "triage", "push", "maintain", "admin"
+          # So the best for now is to use user.permissions I think.
+          # NOTE: the gh api returns a JSON boolean so jq can only output true or false without quotes
+          # (actually even for JSON strings gh's gojq implementation strips the quotes by default unlike jq)
+          allowed=$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$GITHUB_ACTOR/permission" --jq '.user.permissions["maintain"]')
+          [[ "$allowed" == "true" ]] || exit 1
+
+      # TODO make a composite action for the next steps to setup git (unless create-github-app-token incorporates all this...)
+      # Copied from create-github-app-token README "Configure git CLI for an app's bot user"
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@21cfef2b496dd8ef5b904c159339626a10ad380e # v1 v1.11.6
+        with:
+          app-id: ${{ inputs.githubappId }}
+          private-key: ${{ secrets.VERSIONBUMP_GHAPP_PRIVATE_KEY }}
+
+      - name: Mask Node Auth Token
+        if: ${{ inputs.nodeAuthToken != '' }}
+        run: |
+          NODE_AUTH_TOKEN=$(jq -r '.inputs.nodeAuthToken' $GITHUB_EVENT_PATH)
+          echo ::add-mask::$NODE_AUTH_TOKEN
+          echo "NODE_AUTH_TOKEN=$NODE_AUTH_TOKEN" >> $GITHUB_ENV
+
+      - name: Get GitHub App User ID
+        id: get-user-id
+        run: echo "user-id=$(gh api "/users/${RUNGHA_APP_SLUG}[bot]" --jq .id)" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          RUNGHA_APP_SLUG: ${{ steps.app-token.outputs.app-slug }} # just for defense against script injection
+
+      # git user not used normally anymore because we use the github commit API
+      # to create the commits, but keep this anyway just in case. We do get the
+      # exact same value as the one github uses for creating the signed commits.
+      - name: Setup git user
+        run: |
+          git config --global user.name "${RUNGHA_APP_SLUG}[bot]"
+          git config --global user.email "${RUNGHA_USER_ID}+${RUNGHA_APP_SLUG}[bot]@users.noreply.github.com"
+        env:
+          RUNGHA_APP_SLUG: ${{ steps.app-token.outputs.app-slug }} # just for defense against script injection
+          RUNGHA_USER_ID: ${{ steps.get-user-id.outputs.user-id }} # just for defense against script injection
+
+      - name: Setup Node.js
+        uses: actions/setup-node@cdca7365b2dadb8aad0a33bc7601856ffabcc48e # v4 v4.3.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Checkout sources
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4 v4.2.2
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          ref: ${{ inputs.patchBranch }}
+          fetch-depth: 0
+
+      - name: Validate patch versions and refs
+        id: patch
+        run: |
+          if [[ ! "$RUNGHA_PATCH_BRANCH" =~ ^patch-v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "Expected patchBranch=patch-vX.Y.Z"
+            exit 1
+          fi
+          PATCH_MAJOR=${BASH_REMATCH[1]}
+          PATCH_MINOR=${BASH_REMATCH[2]}
+          PATCH_VERSION="${RUNGHA_PATCH_BRANCH#patch-v}"
+          PATCH_TAG="v$PATCH_VERSION"
+          BASE_VERSION="v${PATCH_MAJOR}.${PATCH_MINOR}.0"
+
+          if [[ "$PATCH_TAG" == "$BASE_VERSION" ]]; then
+            echo "Patch version must be later than the base tag $BASE_VERSION"
+            exit 1
+          fi
+          if ! git ls-remote --quiet --exit-code origin "refs/tags/$BASE_VERSION" >/dev/null; then
+            echo "Base tag $BASE_VERSION does not exist"
+            exit 1
+          fi
+
+          RELEASE_BRANCH="release-v${PATCH_MAJOR}.${PATCH_MINOR}"
+          if git ls-remote --quiet --exit-code origin "refs/heads/$RELEASE_BRANCH" >/dev/null; then
+            RELEASE_BRANCH_EXISTS=true
+          else
+            RELEASE_BRANCH_EXISTS=false
+            echo "Release branch $RELEASE_BRANCH does not exist; it will be created from tag $BASE_VERSION"
+          fi
+          if ! git ls-remote --quiet --exit-code origin "refs/heads/$RUNGHA_PATCH_BRANCH" >/dev/null; then
+            echo "Patch branch $RUNGHA_PATCH_BRANCH does not exist"
+            exit 1
+          fi
+          if git ls-remote --quiet --exit-code origin "refs/tags/$PATCH_TAG" >/dev/null; then
+            echo "Tag $PATCH_TAG already exists"
+            exit 1
+          fi
+
+          echo "RELEASE_BRANCH=$RELEASE_BRANCH" >> "$GITHUB_OUTPUT"
+          echo "RELEASE_BRANCH_EXISTS=$RELEASE_BRANCH_EXISTS" >> "$GITHUB_OUTPUT"
+          echo "PATCH_VERSION=$PATCH_VERSION" >> "$GITHUB_OUTPUT"
+          echo "PATCH_TAG=$PATCH_TAG" >> "$GITHUB_OUTPUT"
+          echo "BASE_VERSION=$BASE_VERSION" >> "$GITHUB_OUTPUT"
+        env:
+          RUNGHA_PATCH_BRANCH: ${{ inputs.patchBranch }}
+
+      - name: Checkout release branch and prepare temporary branch
+        run: |
+          git fetch origin "refs/heads/$RUNGHA_PATCH_BRANCH:refs/remotes/origin/$RUNGHA_PATCH_BRANCH"
+          if [[ "$RUNGHA_RELEASE_BRANCH_EXISTS" == "true" ]]; then
+            git fetch origin "refs/heads/$RUNGHA_RELEASE_BRANCH:refs/remotes/origin/$RUNGHA_RELEASE_BRANCH"
+            git checkout -B "$RUNGHA_RELEASE_BRANCH" "origin/$RUNGHA_RELEASE_BRANCH"
+          else
+            git fetch origin "refs/tags/$RUNGHA_BASE_VERSION:refs/tags/$RUNGHA_BASE_VERSION"
+            git checkout -B "$RUNGHA_RELEASE_BRANCH" "refs/tags/$RUNGHA_BASE_VERSION"
+          fi
+          TMPRANDOM="$(printf "%04x" $RANDOM)$(printf "%04x" $RANDOM)$(printf "%04x" $RANDOM)"
+          TMPRELEASEBRANCH="copy-${TMPRANDOM}-${RUNGHA_RELEASE_BRANCH}"
+          git push origin "refs/heads/$RUNGHA_RELEASE_BRANCH:refs/heads/$TMPRELEASEBRANCH"
+          echo "TMPRELEASEBRANCH=$TMPRELEASEBRANCH" >> "$GITHUB_ENV"
+        env:
+          RUNGHA_RELEASE_BRANCH: ${{ steps.patch.outputs.RELEASE_BRANCH }}
+          RUNGHA_RELEASE_BRANCH_EXISTS: ${{ steps.patch.outputs.RELEASE_BRANCH_EXISTS }}
+          RUNGHA_PATCH_BRANCH: ${{ inputs.patchBranch }}
+          RUNGHA_BASE_VERSION: ${{ steps.patch.outputs.BASE_VERSION }}
+
+      - name: Merge patch changes and set version
+        run: |
+          git merge --squash "origin/$RUNGHA_PATCH_BRANCH"
+          npm version --no-git-tag-version "$PATCH_VERSION"
+        env:
+          RUNGHA_PATCH_BRANCH: ${{ inputs.patchBranch }}
+          PATCH_VERSION: ${{ steps.patch.outputs.PATCH_VERSION }}
+
+      - name: Install Dependencies
+        run: npm ci
+
+      # The action creates a signed commit on the temporary copy of the release
+      # branch, then updates the checked-out release branch to that commit.
+      - name: Create signed patch commit
+        uses: IAreKyleW00t/verified-bot-commit@27699d08b34a5440e6b4385c6ea3651602d26bcc # v1.3.3
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          files: "**"
+          message: ${{ format('Patched version {0}', steps.patch.outputs.PATCH_VERSION) }}
+          ref: ${{ env.TMPRELEASEBRANCH }}
+
+      - name: SonarCloud Analysis
+        uses: SonarSource/sonarqube-scan-action@aa494459d7c39c106cc77b166de8b4250a32bb97 # v5.1.0
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          SONAR_TOKEN: ${{ secrets.sonar-token }}
+          RUNGHA_PATCH_VERSION: ${{ steps.patch.outputs.PATCH_TAG }}
+        with:
+          args: >
+            -Dsonar.branch.name="$RUNGHA_PATCH_VERSION"
+
+      - name: check npm publish rights
+        if: ${{ inputs.nodeAuthToken != '' }}
+        run: |
+          NPMUSER=$(npm whoami)
+          NPMACCESS=$(npm --userconfig /dev/null access list collaborators --json | jq -r --arg NPMUSER "$NPMUSER" '.[$NPMUSER]')
+          [[ "$NPMACCESS" == "read-write" ]] || exit 1
+
+      - name: check npm token type automation
+        if: ${{ inputs.nodeAuthToken != '' }}
+        run: |
+          tokens_json=$(npm token list --json)
+          if ! echo "$tokens_json" | jq -r --arg NODE_AUTH_TOKEN $NODE_AUTH_TOKEN '.[] | select((.token | split("...")[0] | inside($NODE_AUTH_TOKEN)) and (.token | split("...")[-1] | inside($NODE_AUTH_TOKEN))) | .bypass_2fa'  | grep "^true$"; then
+            echo "No matching bypass_2fa token found, release would fail because of required 2FA, please check Bypass two-factor authentication (2FA) when creating the token."
+            exit 1
+          fi
+
+      - name: Cleanup temporary branch after pre-publish failure
+        if: ${{ failure() && env.TMPRELEASEBRANCH != '' }}
+        run: git push origin ":$TMPRELEASEBRANCH"
+
+      - name: Push release commit and tag
+        run: |
+          git push origin ":$TMPRELEASEBRANCH"
+          git push origin "refs/heads/$RUNGHA_RELEASE_BRANCH:refs/heads/$RUNGHA_RELEASE_BRANCH"
+          git tag "$RUNGHA_PATCH_VERSION"
+          git push origin "$RUNGHA_PATCH_VERSION"
+        env:
+          RUNGHA_PATCH_VERSION: ${{ steps.patch.outputs.PATCH_TAG }}
+          RUNGHA_RELEASE_BRANCH: ${{ steps.patch.outputs.RELEASE_BRANCH }}
+
+      - name: Publish to NPM
+        run: npm publish --access=public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ env.NODE_AUTH_TOKEN }} # not defined by mask step when using trusted publisher => empty string and still works
+
+      - name: Create GitHub Release
+        run: |
+          gh release create "$RUNGHA_PATCH_VERSION" --generate-notes
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          RUNGHA_PATCH_VERSION: ${{ steps.patch.outputs.PATCH_TAG }}

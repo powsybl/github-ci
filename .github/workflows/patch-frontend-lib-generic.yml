@@ -11,14 +11,6 @@ on:
         description: 'Patch branch (format: patch-vX.Y.Z)'
         required: true
         type: string
-      patchVersion:
-        description: 'Patch version to publish (format: vX.Y.Z)'
-        required: true
-        type: string
-      baseVersion:
-        description: 'Existing version tag used to create the release branch (format: vX.Y.Z)'
-        required: true
-        type: string
       environment:
         required: false
         default: 'release'
@@ -120,27 +112,22 @@ jobs:
       - name: Validate patch versions and refs
         id: patch
         run: |
-          if [[ ! "$RUNGHA_PATCH_VERSION" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]] ||
-             [[ "$RUNGHA_PATCH_BRANCH" != "patch-$RUNGHA_PATCH_VERSION" ]]; then
-            echo "Expected patchVersion=vX.Y.Z and matching patchBranch=patch-vX.Y.Z"
+          if [[ ! "$RUNGHA_PATCH_BRANCH" =~ ^patch-v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "Expected patchBranch=patch-vX.Y.Z"
             exit 1
           fi
           PATCH_MAJOR=${BASH_REMATCH[1]}
           PATCH_MINOR=${BASH_REMATCH[2]}
+          PATCH_VERSION="${RUNGHA_PATCH_BRANCH#patch-v}"
+          PATCH_TAG="v$PATCH_VERSION"
+          BASE_VERSION="v${PATCH_MAJOR}.${PATCH_MINOR}.0"
 
-          if [[ ! "$RUNGHA_BASE_VERSION" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
-            echo "Invalid base version. Expected vX.Y.Z"
+          if [[ "$PATCH_TAG" == "$BASE_VERSION" ]]; then
+            echo "Patch version must be later than the base tag $BASE_VERSION"
             exit 1
           fi
-          BASE_MAJOR=${BASH_REMATCH[1]}
-          BASE_MINOR=${BASH_REMATCH[2]}
-          if [[ "$RUNGHA_BASE_VERSION" == "$RUNGHA_PATCH_VERSION" ||
-                "$BASE_MAJOR.$BASE_MINOR" != "$PATCH_MAJOR.$PATCH_MINOR" ]]; then
-            echo "baseVersion must differ from patchVersion and share its X.Y release line"
-            exit 1
-          fi
-          if ! git ls-remote --quiet --exit-code origin "refs/tags/$RUNGHA_BASE_VERSION" >/dev/null; then
-            echo "Base tag $RUNGHA_BASE_VERSION does not exist"
+          if ! git ls-remote --quiet --exit-code origin "refs/tags/$BASE_VERSION" >/dev/null; then
+            echo "Base tag $BASE_VERSION does not exist"
             exit 1
           fi
 
@@ -149,24 +136,24 @@ jobs:
             RELEASE_BRANCH_EXISTS=true
           else
             RELEASE_BRANCH_EXISTS=false
-            echo "Release branch $RELEASE_BRANCH does not exist; it will be created from tag $RUNGHA_BASE_VERSION"
+            echo "Release branch $RELEASE_BRANCH does not exist; it will be created from tag $BASE_VERSION"
           fi
           if ! git ls-remote --quiet --exit-code origin "refs/heads/$RUNGHA_PATCH_BRANCH" >/dev/null; then
             echo "Patch branch $RUNGHA_PATCH_BRANCH does not exist"
             exit 1
           fi
-          if git ls-remote --quiet --exit-code origin "refs/tags/$RUNGHA_PATCH_VERSION" >/dev/null; then
-            echo "Tag $RUNGHA_PATCH_VERSION already exists"
+          if git ls-remote --quiet --exit-code origin "refs/tags/$PATCH_TAG" >/dev/null; then
+            echo "Tag $PATCH_TAG already exists"
             exit 1
           fi
 
           echo "RELEASE_BRANCH=$RELEASE_BRANCH" >> "$GITHUB_OUTPUT"
           echo "RELEASE_BRANCH_EXISTS=$RELEASE_BRANCH_EXISTS" >> "$GITHUB_OUTPUT"
-          echo "PATCH_VERSION=${RUNGHA_PATCH_VERSION#v}" >> "$GITHUB_OUTPUT"
+          echo "PATCH_VERSION=$PATCH_VERSION" >> "$GITHUB_OUTPUT"
+          echo "PATCH_TAG=$PATCH_TAG" >> "$GITHUB_OUTPUT"
+          echo "BASE_VERSION=$BASE_VERSION" >> "$GITHUB_OUTPUT"
         env:
           RUNGHA_PATCH_BRANCH: ${{ inputs.patchBranch }}
-          RUNGHA_PATCH_VERSION: ${{ inputs.patchVersion }}
-          RUNGHA_BASE_VERSION: ${{ inputs.baseVersion }}
 
       - name: Checkout release branch and prepare temporary branch
         run: |
@@ -186,7 +173,7 @@ jobs:
           RUNGHA_RELEASE_BRANCH: ${{ steps.patch.outputs.RELEASE_BRANCH }}
           RUNGHA_RELEASE_BRANCH_EXISTS: ${{ steps.patch.outputs.RELEASE_BRANCH_EXISTS }}
           RUNGHA_PATCH_BRANCH: ${{ inputs.patchBranch }}
-          RUNGHA_BASE_VERSION: ${{ inputs.baseVersion }}
+          RUNGHA_BASE_VERSION: ${{ steps.patch.outputs.BASE_VERSION }}
 
       - name: Merge patch changes and set version
         run: |
@@ -209,22 +196,12 @@ jobs:
           message: ${{ format('Patched version {0}', steps.patch.outputs.PATCH_VERSION) }}
           ref: ${{ env.TMPRELEASEBRANCH }}
 
-      - name: Push release commit and tag
-        run: |
-          git push origin ":$TMPRELEASEBRANCH"
-          git push origin "refs/heads/$RUNGHA_RELEASE_BRANCH:refs/heads/$RUNGHA_RELEASE_BRANCH"
-          git tag "$RUNGHA_PATCH_VERSION"
-          git push origin "$RUNGHA_PATCH_VERSION"
-        env:
-          RUNGHA_PATCH_VERSION: ${{ inputs.patchVersion }}
-          RUNGHA_RELEASE_BRANCH: ${{ steps.patch.outputs.RELEASE_BRANCH }}
-
       - name: SonarCloud Analysis
         uses: SonarSource/sonarqube-scan-action@aa494459d7c39c106cc77b166de8b4250a32bb97 # v5.1.0
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           SONAR_TOKEN: ${{ secrets.sonar-token }}
-          RUNGHA_PATCH_VERSION: ${{ inputs.patchVersion }}
+          RUNGHA_PATCH_VERSION: ${{ steps.patch.outputs.PATCH_TAG }}
         with:
           args: >
             -Dsonar.branch.name="$RUNGHA_PATCH_VERSION"
@@ -245,6 +222,20 @@ jobs:
             exit 1
           fi
 
+      - name: Cleanup temporary branch after pre-publish failure
+        if: ${{ failure() && env.TMPRELEASEBRANCH != '' }}
+        run: git push origin ":$TMPRELEASEBRANCH"
+
+      - name: Push release commit and tag
+        run: |
+          git push origin ":$TMPRELEASEBRANCH"
+          git push origin "refs/heads/$RUNGHA_RELEASE_BRANCH:refs/heads/$RUNGHA_RELEASE_BRANCH"
+          git tag "$RUNGHA_PATCH_VERSION"
+          git push origin "$RUNGHA_PATCH_VERSION"
+        env:
+          RUNGHA_PATCH_VERSION: ${{ steps.patch.outputs.PATCH_TAG }}
+          RUNGHA_RELEASE_BRANCH: ${{ steps.patch.outputs.RELEASE_BRANCH }}
+
       - name: Publish to NPM
         run: npm publish --access=public --provenance
         env:
@@ -255,4 +246,4 @@ jobs:
           gh release create "$RUNGHA_PATCH_VERSION" --generate-notes
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          RUNGHA_PATCH_VERSION: ${{ inputs.patchVersion }}
+          RUNGHA_PATCH_VERSION: ${{ steps.patch.outputs.PATCH_TAG }}
